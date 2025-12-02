@@ -75,6 +75,11 @@ PYBIND11_EMBEDDED_MODULE(XyceObjects, m) {
     .def_readonly("locaEnabledFlag", &Xyce::Device::SolverState::locaEnabledFlag);
 }
 
+template <typename T>
+py::array_t<T> mv_to_np_array(py::memoryview mv) {
+    return mv.cast<py::array_t<T> >();
+}
+
 // creates py::list of py::memoryviews to wrap std::vector of std::vector
 template <typename T>
 py::list get_list_of_memoryviews(std::vector<std::vector<T> > & stdvec_2d) {
@@ -104,19 +109,22 @@ private:
 
   py::dict F_Q_B_dFdX_dQdX_sizes;
 
-  py::memoryview py_flagSolV;
-  py::memoryview py_F;
-  py::memoryview py_Q;
-  py::memoryview py_dFdXdVp;
-  py::memoryview py_dQdXdVp;
-  py::memoryview py_B;
-  py::memoryview py_origFlag;
+  py::array_t<double> py_np_flagSolV;
+  py::array_t<double> py_np_F;
+  py::array_t<double> py_np_Q;
+  py::array_t<double> py_np_B;
+  py::array_t<double> py_np_dFdX;
+  py::array_t<double> py_np_dQdX;
+  py::array_t<double> py_np_dFdXdVp;
+  py::array_t<double> py_np_dQdXdVp;
+  py::array_t<int> py_np_origFlag;
+
+  std::vector<double> dFdX_internal;
+  std::vector<double> dQdX_internal;
 
   py::list py_solV;
   py::list py_stoV;
   py::list py_staV;
-  py::list py_dFdX;
-  py::list py_dQdX;
   py::list py_jacStamp;
 
   bool s_params_loaded;
@@ -137,14 +145,6 @@ public:
   double nullValue;
 
   pythonVectorCompute() :       
-        // py::memoryview has no default constructor so we initialize from a scalar
-        py_flagSolV(py::memoryview::from_buffer<double>(&nullValue, {1}, {sizeof(double)})),
-        py_F(py::memoryview::from_buffer<double>(&nullValue, {1}, {sizeof(double)})),
-        py_Q(py::memoryview::from_buffer<double>(&nullValue, {1}, {sizeof(double)})),
-        py_dFdXdVp(py::memoryview::from_buffer<double>(&nullValue, {1}, {sizeof(double)})),
-        py_dQdXdVp(py::memoryview::from_buffer<double>(&nullValue, {1}, {sizeof(double)})),
-        py_B(py::memoryview::from_buffer<double>(&nullValue, {1}, {sizeof(double)})),
-        py_origFlag(py::memoryview::from_buffer<int>((int*)&nullValue, {1}, {sizeof(int)})),
         s_params_loaded(false), p_params_loaded(false), jacStampSet(false),
         numExternalVars(0), numInternalVars(0), numStateVars(0), numStoreVars(0),
         numBranchDataVars(0), numBranchDataVarsIfAllocated(0), origFlag(0), nullValue(0)
@@ -253,53 +253,81 @@ public:
                     dQdX[i].resize(Q_size);
                 }
             }
+            if (dFdX_internal.size()!=F_size*F_size) {
+                dFdX_internal.resize(F_size*F_size);
+            }
+            if (dQdX_internal.size()!=Q_size*Q_size) {
+                dQdX_internal.resize(Q_size*Q_size);
+            }
         }
 
         double null_value = 0;
         double* data_flagSolV = (flagSolV.data()) ? flagSolV.data() : &null_value;
         double* data_F  = ( F.data()) ?  F.data() : &null_value;
         double* data_Q  = ( Q.data()) ?  Q.data() : &null_value;
+        double* data_B  = ( B.data()) ?  B.data() : &null_value;
         double* data_dFdXdVp  = ( dFdXdVp.data()) ?  dFdXdVp.data() : &null_value;
         double* data_dQdXdVp  = ( dQdXdVp.data()) ?  dQdXdVp.data() : &null_value;
-        double* data_B  = ( B.data()) ?  B.data() : &null_value;
+        double* data_dFdX  = ( dFdX_internal.data()) ?  dFdX_internal.data() : &null_value;
+        double* data_dQdX  = ( dQdX_internal.data()) ?  dQdX_internal.data() : &null_value;
         origFlag = origFlag_;
         int* data_origFlag = &origFlag;
 
-        py_flagSolV = py::memoryview::from_buffer(
+        auto py_mv_flagSolV = py::memoryview::from_buffer(
                 data_flagSolV,
                 {flagSolV.size()}, 
                 {sizeof(double)}); 
-        py_F = py::memoryview::from_buffer(
+        auto py_mv_F = py::memoryview::from_buffer(
                 data_F,
                 {F.size()}, 
                 {sizeof(double)}); 
-        py_Q = py::memoryview::from_buffer(
+        auto py_mv_Q = py::memoryview::from_buffer(
                 data_Q,
                 {Q.size()}, 
                 {sizeof(double)}); 
-        py_dFdXdVp = py::memoryview::from_buffer(
-                data_dFdXdVp,
-                {dFdXdVp.size()}, 
-                {sizeof(double)}); 
-        py_dQdXdVp = py::memoryview::from_buffer(
-                data_dQdXdVp,
-                {dQdXdVp.size()}, 
-                {sizeof(double)}); 
-        py_B = py::memoryview::from_buffer(
+        auto py_mv_B = py::memoryview::from_buffer(
                 data_B,
                 {B.size()}, 
                 {sizeof(double)}); 
-        py_origFlag = py::memoryview::from_buffer(
+        auto py_mv_dFdX = py::memoryview::from_buffer(
+                data_dFdX,
+                sizeof(double),
+                "d",
+                {F.size(), F.size()},
+                {F.size()*sizeof(double), sizeof(double)});
+        auto py_mv_dQdX = py::memoryview::from_buffer(
+                data_dQdX,
+                sizeof(double),
+                "d",
+                {Q.size(), Q.size()},
+                {Q.size()*sizeof(double), sizeof(double)});
+        auto py_mv_dFdXdVp = py::memoryview::from_buffer(
+                data_dFdXdVp,
+                {dFdXdVp.size()}, 
+                {sizeof(double)}); 
+        auto py_mv_dQdXdVp = py::memoryview::from_buffer(
+                data_dQdXdVp,
+                {dQdXdVp.size()}, 
+                {sizeof(double)}); 
+        auto py_mv_origFlag = py::memoryview::from_buffer(
                 data_origFlag,
                 {1}, 
                 {sizeof(int)}); 
+
+        py_np_flagSolV = mv_to_np_array<double>(py_mv_flagSolV);
+        py_np_F = mv_to_np_array<double>(py_mv_F);
+        py_np_Q = mv_to_np_array<double>(py_mv_Q);
+        py_np_B = mv_to_np_array<double>(py_mv_B);
+        py_np_dFdX = mv_to_np_array<double>(py_mv_dFdX);
+        py_np_dQdX = mv_to_np_array<double>(py_mv_dQdX);
+        py_np_dFdXdVp = mv_to_np_array<double>(py_mv_dFdXdVp);
+        py_np_dQdXdVp = mv_to_np_array<double>(py_mv_dQdXdVp);
+        py_np_origFlag = mv_to_np_array<int>(py_mv_origFlag);
 
         // allocates new buffers for each row from heap
         py_solV = get_list_of_memoryviews(solV);
         py_stoV = get_list_of_memoryviews(stoV);
         py_staV = get_list_of_memoryviews(staV);
-        py_dFdX = get_list_of_memoryviews(dFdX);
-        py_dQdX = get_list_of_memoryviews(dQdX);
 
         py::object result = device.attr("initialize")(
                 py_xyceDeviceOptions,
@@ -311,25 +339,64 @@ public:
     }
 
     py::object result = device.attr("computeXyceVectors")(
-            py_flagSolV,
+            py_np_flagSolV,
             py_solV, 
             py_stoV,
             py_staV,
             py_xyceDeviceOptions,
             py_xyceSolverState,
-            py_origFlag,
-            py_F, 
-            py_Q, 
-            py_B, 
-            py_dFdX, 
-            py_dQdX, 
-            py_dFdXdVp,
-            py_dQdXdVp,
-            b_params, 
-            d_params, 
-            i_params, 
+            py_np_origFlag,
+            py_np_F,
+            py_np_Q,
+            py_np_B,
+            py_np_dFdX,
+            py_np_dQdX,
+            py_np_dFdXdVp,
+            py_np_dQdXdVp,
+            b_params,
+            d_params,
+            i_params,
             s_params);
     origFlag_ = (bool)(origFlag);
+
+    if (jacStamp.size() > 0) {
+        // copy internal gradient representations back to Xyce representations
+        for (int i = 0; i<dFdX.size(); i++)
+        {
+            for (int j = 0; j<jacStamp[i].size(); j++)
+            {
+                // C - row major ordering
+                dFdX[i][jacStamp[i][j]] = dFdX_internal[i*dFdX[0].size() + jacStamp[i][j]];
+            }
+        }
+        for (int i = 0; i<dQdX.size(); i++)
+        {
+            for (int j = 0; j<jacStamp[i].size(); j++)
+            {
+                // C - row major ordering
+                dQdX[i][jacStamp[i][j]] = dQdX_internal[i*dQdX[0].size() + jacStamp[i][j]];
+            }
+        }
+    } else {
+        // copy internal gradient representations back to Xyce representations
+        for (int i = 0; i<dFdX.size(); i++)
+        {
+            for (int j = 0; j<dFdX[i].size(); j++)
+            {
+                // C - row major ordering
+                dFdX[i][j] = dFdX_internal[i*dFdX[0].size() + j];
+            }
+        }
+        for (int i = 0; i<dQdX.size(); i++)
+        {
+            for (int j = 0; j<dQdX[i].size(); j++)
+            {
+                // C - row major ordering
+                dQdX[i][j] = dQdX_internal[i*dQdX[0].size() + j];
+            }
+        }
+
+    }
 
     return true;
   };
