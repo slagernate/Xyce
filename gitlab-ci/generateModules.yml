@@ -10,6 +10,9 @@ include:
     xdmPre: ""
     GIT_STRATEGY: none
   stage: generateModules
+  id_tokens:
+    CI_JOB_JWT:
+      aud: https://cee-gitlab.sandia.gov
   before_script:
     - echo "USER = ${USER}"
     - |

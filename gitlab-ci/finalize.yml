@@ -1,5 +1,8 @@
 finalize:
   stage: finalize
+  id_tokens:
+    CI_JOB_JWT:
+      aud: https://cee-gitlab.sandia.gov
   dependencies: []
   tags:
     - cee.build

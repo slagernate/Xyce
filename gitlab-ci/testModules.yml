@@ -3,6 +3,9 @@ include:
   
 .test_modules:
   stage: testModules
+  id_tokens:
+    CI_JOB_JWT:
+      aud: https://cee-gitlab.sandia.gov
   dependencies: []
   variables:
     GIT_STRATEGY: none
