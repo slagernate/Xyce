@@ -4,6 +4,9 @@ include:
 .build_test_install_xyce:
   extends: .build_base
   stage: buildTestInstallXyce
+  id_tokens:
+    CI_JOB_JWT:
+      aud: https://cee-gitlab.sandia.gov
   dependencies: []
   variables:
     GoogleUnitTesting: "OFF"

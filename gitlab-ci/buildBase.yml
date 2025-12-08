@@ -1,5 +1,8 @@
 .build_base:
   stage: build
+  id_tokens:
+    CI_JOB_JWT:
+      aud: https://cee-gitlab.sandia.gov
   variables:
     CC: ""
     CXX: ""

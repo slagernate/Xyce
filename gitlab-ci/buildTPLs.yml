@@ -4,6 +4,9 @@ include:
 .build_tpls:
   extends: .build_base
   dependencies: []
+  id_tokens:
+    CI_JOB_JWT:
+      aud: https://cee-gitlab.sandia.gov
   stage: buildTPLs
   script:
     # clone relevant repos

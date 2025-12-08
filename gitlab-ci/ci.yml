@@ -85,6 +85,9 @@ include:
 # dependent on the value of the releavant "DO_*" booleans.
 trigger_pipeline:
   stage: deploy
+  id_tokens:
+    CI_JOB_JWT:
+      aud: https://cee-gitlab.sandia.gov
   tags:
     - cee.build
   variables:
