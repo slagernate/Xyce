@@ -67,6 +67,8 @@ GNU_serial.generateModules:
       of Xyce with the command:\n   Xyce \[xyce options\]
   script:
     - printModuleFile
+  needs:
+    - GNU_serial.buildTestInstallXyce
 
 GNU_OpenMPI.generateModules:
   extends:
@@ -81,6 +83,9 @@ GNU_OpenMPI.generateModules:
       of Xyce with the command:\n   mpirun -np <n> Xyce \[xyce options\]
   script:
     - printModuleFile
+  needs:
+   - job: GNU_OpenMPI.buildTestInstallXyce
+     artifacts: true
 
 Intel_serial.generateModules:
   extends:
@@ -95,6 +100,9 @@ Intel_serial.generateModules:
       of Xyce with the command:\n   Xyce \[xyce options\]
   script:
     - printModuleFile
+  needs:
+    - job: Intel_serial.buildTestInstallXyce
+      artifacts: true
 
 Intel_OpenMPI.generateModules:
   extends:
@@ -109,7 +117,9 @@ Intel_OpenMPI.generateModules:
       of Xyce with the command:\n   mpirun -np <n> Xyce \[xyce options\]
   script:
     - printModuleFile
-
+  needs:
+    - job: Intel_OpenMPI.buildTestInstallXyce
+      artifacts: true
 
 GNU_OpenMPI.cts.generateModules:
   extends:
@@ -126,6 +136,9 @@ GNU_OpenMPI.cts.generateModules:
       of Xyce with the command:\n   mpirun -np <n> Xyce \[xyce options\]
   script:
     - printModuleFile
+  needs:
+    - job: GNU_OpenMPI.buildTestInstallXyce
+      artifacts: true
 
 GNU_serial.cts.generateModules:
   extends:
@@ -142,6 +155,9 @@ GNU_serial.cts.generateModules:
       of Xyce with the command:\n   mpirun -np <n> Xyce \[xyce options\]
   script:
     - printModuleFile
+  needs:
+    - job: GNU_serial.buildTestInstallXyce
+      artifacts: true
 
 Intel_OpenMPI.cts.generateModules:
   extends:
@@ -158,6 +174,9 @@ Intel_OpenMPI.cts.generateModules:
       of Xyce with the command:\n   mpirun -np <n> Xyce \[xyce options\]
   script:
     - printModuleFile
+  needs:
+    - job: Intel_OpenMPI.cts.buildTestInstallXyce
+      artifacts: true
 
 Intel_serial.cts.generateModules:
   extends:
@@ -174,5 +193,6 @@ Intel_serial.cts.generateModules:
       of Xyce with the command:\n   mpirun -np <n> Xyce \[xyce options\]
   script:
     - printModuleFile
-
-
+  needs:
+    - job: Intel_serial.cts.buildTestInstallXyce
+      artifacts: true
