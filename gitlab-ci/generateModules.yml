@@ -137,7 +137,7 @@ GNU_OpenMPI.cts.generateModules:
   script:
     - printModuleFile
   needs:
-    - job: GNU_OpenMPI.buildTestInstallXyce
+    - job: GNU_OpenMPI.cts.buildTestInstallXyce
       artifacts: true
 
 GNU_serial.cts.generateModules:
@@ -156,7 +156,7 @@ GNU_serial.cts.generateModules:
   script:
     - printModuleFile
   needs:
-    - job: GNU_serial.buildTestInstallXyce
+    - job: GNU_serial.cts.buildTestInstallXyce
       artifacts: true
 
 Intel_OpenMPI.cts.generateModules:
