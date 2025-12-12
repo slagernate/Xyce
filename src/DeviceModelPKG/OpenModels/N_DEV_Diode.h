@@ -86,7 +86,7 @@ static diodeSensitivity diodeSens;
 struct Traits : public DeviceTraits<Model, Instance>
 {
   static const char *name() {return "Diode";}
-  static const char *deviceTypeName() {return "D level 1,2";}
+  static const char *deviceTypeName() {return "D level 1,2,3";}
   static int numNodes() {return 2;}
   static bool modelRequired() {return true;}
   static bool isLinearDevice() {return false;}
@@ -371,6 +371,12 @@ private:
   bool InitCondGiven;
   double dtemp;
   bool dtempGiven;
+  
+  // Level 3 geometry parameters (optional, for XW support)
+  double W;    // width (level=3, for XW calculation)
+  double L;    // length (level=3, for XW calculation)
+  bool WGiven; // flag indicating W was specified
+  bool LGiven; // flag indicating L was specified
 
   double tJctPot;
   double tJctCap;
@@ -564,10 +570,20 @@ private:
   double KF;   // flicker noise coefficient
   double AF;   // flicker noise exponent
 
+  // Level 3 parameters
+  double XW;   // mask/etch offset parameter (level=3)
+  double GAP1; // first bandgap correction factor (TLEV=2)
+  double GAP2; // second bandgap correction factor (TLEV=2)
+  int TLEV;    // temperature level (0=default, 1=default, 2=alternative)
+
   bool BVGiven;
   bool IRFGiven;
   bool JSWGiven;
   bool NSGiven;
+  bool XWGiven;   // flag indicating XW was specified
+  bool GAP1Given; // flag indicating GAP1 was specified
+  bool GAP2Given; // flag indicating GAP2 was specified
+  bool TLEVGiven; // flag indicating TLEV was specified
 };
 
 //-----------------------------------------------------------------------------

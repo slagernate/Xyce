@@ -93,6 +93,19 @@ void Traits::loadInstanceParameters(ParametricData<Diode::Instance> &p)
     .setGivenMember(&Diode::Instance::dtempGiven)
     .setUnit(U_DEGC)
     .setDescription("Device delta temperature");
+
+  // Level 3 geometry parameters (optional, for XW support)
+  p.addPar ("W", 0.0, &Diode::Instance::W)
+    .setGivenMember(&Diode::Instance::WGiven)
+    .setUnit(U_METER)
+    .setCategory(CAT_GEOMETRY)
+    .setDescription("Width (level=3, for XW calculation)");
+
+  p.addPar ("L", 0.0, &Diode::Instance::L)
+    .setGivenMember(&Diode::Instance::LGiven)
+    .setUnit(U_METER)
+    .setCategory(CAT_GEOMETRY)
+    .setDescription("Length (level=3, for XW calculation)");
 }
 
 void Traits::loadModelParameters(ParametricData<Diode::Model> &p)
@@ -368,6 +381,30 @@ void Traits::loadModelParameters(ParametricData<Diode::Model> &p)
     .setDescription("Flicker noise exponent")
     .setAnalyticSensitivityAvailable(true)
     .setSensitivityFunctor(&diodeSens);
+
+  // Level 3 parameters
+  p.addPar ("XW", 0.0, &Diode::Model::XW)
+    .setGivenMember(&Diode::Model::XWGiven)
+    .setUnit(U_METER)
+    .setCategory(CAT_GEOMETRY)
+    .setDescription("Mask and etching offset (level=3)");
+
+  p.addPar ("GAP1", 7.02e-4, &Diode::Model::GAP1)
+    .setGivenMember(&Diode::Model::GAP1Given)
+    .setUnit(U_EV)
+    .setCategory(CAT_PROCESS)
+    .setDescription("First bandgap correction factor (TLEV=2)");
+
+  p.addPar ("GAP2", 1108.0, &Diode::Model::GAP2)
+    .setGivenMember(&Diode::Model::GAP2Given)
+    .setUnit(U_DEGK)
+    .setCategory(CAT_PROCESS)
+    .setDescription("Second bandgap correction factor (TLEV=2)");
+
+  p.addPar ("TLEV", 0, &Diode::Model::TLEV)
+    .setGivenMember(&Diode::Model::TLEVGiven)
+    .setCategory(CAT_PROCESS)
+    .setDescription("Diode temperature equation selector (0=default, 1=default, 2=alternative)");
 }
 
 
@@ -407,6 +444,19 @@ bool Instance::processParams()
     }
   }
 
+  // Level 3: Apply XW mask/etch offset when level=3 and W/L are given
+  int level = model_.getLevel();
+  if(level == 3 && WGiven && LGiven)
+  {
+    // Apply XW offset to effective dimensions
+    double effectiveW = W + model_.XW;
+    double effectiveL = L + model_.XW;
+    
+    // Recalculate area and perimeter with XW offset
+    Area = effectiveW * effectiveL * multiplicityFactor;
+    PJ = (2.0*effectiveW + 2.0*effectiveL) * multiplicityFactor;
+  }
+
   updateTemperature( Temp );
   return true;
 }
@@ -434,6 +484,10 @@ Instance::Instance(
     InitCondGiven(false),
     dtemp(0.0),
     dtempGiven(false),
+    W(0.0),
+    L(0.0),
+    WGiven(false),
+    LGiven(false),
     tJctPot(0.0),
     tJctCap(0.0),
     tJctSWPot(0.0),
@@ -1443,12 +1497,27 @@ bool Instance::updateTemperature( const double & temp_tmp )
 
   double vt = CONSTKoverQ * Temp;
   double fact2 = Temp / CONSTREFTEMP;
-  double egfet = CONSTEg0 - (CONSTalphaEg*Temp*Temp)/(Temp+CONSTbetaEg);
+  
+  // Bandgap calculation - conditional on TLEV
+  double egfet, egfet1;
+  if((model_.TLEV == 0) || (model_.TLEV == 1))
+  {
+    // Standard bandgap calculation (hardcoded values)
+    egfet = CONSTEg0 - (CONSTalphaEg*Temp*Temp)/(Temp+CONSTbetaEg);
+    egfet1 = CONSTEg0 - (CONSTalphaEg*model_.TNOM*model_.TNOM)/
+                    (model_.TNOM+CONSTbetaEg);
+  }
+  else  // TLEV == 2
+  {
+    // Alternative bandgap calculation using GAP1 and GAP2
+    egfet = model_.EG - (model_.GAP1*Temp*Temp)/(Temp+model_.GAP2);
+    egfet1 = model_.EG - (model_.GAP1*model_.TNOM*model_.TNOM)/
+                    (model_.TNOM+model_.GAP2);
+  }
+  
   double arg = -egfet/(2.0*CONSTboltz*Temp) +
                CONSTEg300/(CONSTboltz*(CONSTREFTEMP+CONSTREFTEMP));
   double pbfact = -2.0*vt*(1.5*log(fact2)+CONSTQ*arg);
-  double egfet1 = CONSTEg0 - (CONSTalphaEg*model_.TNOM*model_.TNOM)/
-                  (model_.TNOM+CONSTbetaEg);
   double arg1 = -egfet1/(2.0*CONSTboltz*model_.TNOM) +
 		CONSTEg300/(2.0*CONSTboltz*CONSTREFTEMP);
   double fact1 = model_.TNOM/CONSTREFTEMP;
@@ -1466,11 +1535,41 @@ bool Instance::updateTemperature( const double & temp_tmp )
 
   tJctCap *= 1.0 + model_.M*(4.0e-4*(Temp-CONSTREFTEMP)-gmanew);
 
-  tSatCur = model_.IS*exp(((Temp/model_.TNOM)-1.0)*
-                          model_.EG/(model_.N*vt)+
-                          model_.XTI/model_.N*log(Temp/model_.TNOM));
+  // Saturation current calculation - conditional on TLEV
+  double lnTRatio = log(Temp / model_.TNOM);
+  
+  if((model_.TLEV == 0) || (model_.TLEV == 1))
+  {
+    // Standard saturation current calculation (existing code)
+    tSatCur = model_.IS*exp(((Temp/model_.TNOM)-1.0)*
+                            model_.EG/(model_.N*vt)+
+                            model_.XTI/model_.N*lnTRatio);
 
-  // Sidewall version of above:
+    tSatSWCur = model_.JSW*exp(((Temp/model_.TNOM)-1.0)*
+                               model_.EG/(model_.NS*vt)+
+                               model_.XTI/model_.NS*lnTRatio);
+  }
+  else  // TLEV == 2
+  {
+    // Alternative saturation current calculation
+    double vte = model_.N * vt;
+    double arg0 = egfet1 / (model_.N * vtnom);
+    double arg1 = egfet / vte;
+    double arg2 = model_.XTI / model_.N * lnTRatio;
+    
+    tSatCur = model_.IS * exp(arg0 - arg1 + arg2);
+    // Note: subtraction of arg1, not addition
+    
+    // Sidewall version with NS
+    double vteSW = model_.NS * vt;
+    double arg0SW = egfet1 / (model_.NS * vtnom);
+    double arg1SW = egfet / vteSW;
+    double arg2SW = model_.XTI / model_.NS * lnTRatio;
+    
+    tSatSWCur = model_.JSW * exp(arg0SW - arg1SW + arg2SW);
+  }
+
+  // Sidewall capacitance calculation (same for all TLEV):
   double pboSW = (model_.VJSW-pbfact1)/fact1;
   double gmaSWold = (model_.VJSW-pboSW)/pboSW;
 
@@ -1482,10 +1581,6 @@ bool Instance::updateTemperature( const double & temp_tmp )
   double gmaSWnew = (tJctSWPot-pboSW)/pboSW;
 
   tJctSWCap *= 1.0+model_.MJSW*(4.0e-4*(Temp-CONSTREFTEMP)-gmaSWnew);
-
-  tSatSWCur = model_.JSW*exp(((Temp/model_.TNOM)-1.0)*
-                             model_.EG/(model_.NS*vt)+
-                             model_.XTI/model_.NS*log(Temp/model_.TNOM));
 
   tF1 = tJctPot*(1.0-exp((1.0-model_.M)*xfc))/(1.0-model_.M);
 
@@ -1513,9 +1608,24 @@ bool Instance::updateTemperature( const double & temp_tmp )
   tRS   = model_.RS;
   tCOND = model_.COND;
 
-  tSatCurR = model_.ISR*exp((Temp/TNOM - 1.0)*
-                            model_.EG/(model_.NR*vt)+
-                            model_.XTI/model_.NR*log(Temp/TNOM));
+  // Recombination saturation current - conditional on TLEV
+  if((model_.TLEV == 0) || (model_.TLEV == 1))
+  {
+    // Standard calculation
+    tSatCurR = model_.ISR*exp((Temp/TNOM - 1.0)*
+                              model_.EG/(model_.NR*vt)+
+                              model_.XTI/model_.NR*lnTRatio);
+  }
+  else  // TLEV == 2
+  {
+    // Alternative calculation
+    double vteR = model_.NR * vt;
+    double arg0R = egfet1 / (model_.NR * vtnom);
+    double arg1R = egfet / vteR;
+    double arg2R = model_.XTI / model_.NR * lnTRatio;
+    
+    tSatCurR = model_.ISR * exp(arg0R - arg1R + arg2R);
+  }
 
   tIKF = model_.IKF*(1 + model_.TIKF*(Temp-TNOM));
 
@@ -1628,6 +1738,15 @@ bool Model::processParams ()
   if (!given("NBV"))
     NBV=N;
 
+  // Level 3: Set default EG based on TLEV
+  if (!given("EG"))
+  {
+    if(TLEV == 2)
+      EG = 1.16;  // Default for TLEV=2
+    else
+      EG = 1.11;  // Default for TLEV=0/1
+  }
+
   double xfc = log(1.0-FC);
   double xfcs = log(1.0-FCS);
   F2 = exp((1.0+M)*xfc);
@@ -1711,10 +1830,18 @@ Model::Model(
     TNOM(27),
     KF(0.0),
     AF(1.0),
+    XW(0.0),
+    GAP1(7.02e-4),
+    GAP2(1108.0),
+    TLEV(0),
     BVGiven(false),
     IRFGiven(false),
     JSWGiven(false),
-    NSGiven(false)
+    NSGiven(false),
+    XWGiven(false),
+    GAP1Given(false),
+    GAP2Given(false),
+    TLEVGiven(false)
 {
 
   // Set params to constant default values:
@@ -1962,15 +2089,17 @@ registerDevice(const DeviceCountMap& deviceMap, const std::set<int>& levelSet)
 
   if (!initialized && (deviceMap.empty() ||
       ((deviceMap.find("D")!=deviceMap.end()) && 
-      ((levelSet.find(1)!=levelSet.end()) || (levelSet.find(2)!=levelSet.end())))))
+      ((levelSet.find(1)!=levelSet.end()) || (levelSet.find(2)!=levelSet.end()) || (levelSet.find(3)!=levelSet.end())))))
   {
     initialized = true;
 
     Config<Traits>::addConfiguration()
       .registerDevice("d", 1)
       .registerDevice("d", 2)
+      .registerDevice("d", 3)
       .registerModelType("d", 1)
-      .registerModelType("d", 2);
+      .registerModelType("d", 2)
+      .registerModelType("d", 3);
   }
 }
 
@@ -2095,7 +2224,12 @@ bool updateTemperature
    const ScalarT & FC,
    const ScalarT & FCS,
 
-   const int  level
+   const int  level,
+   
+   // Level 3 parameters
+   const int  TLEV,
+   const ScalarT & GAP1,
+   const ScalarT & GAP2
 
    )
 {
@@ -2123,12 +2257,25 @@ bool updateTemperature
 
   ScalarT vt = KoverQ * Temp;
   ScalarT fact2 = Temp / REFTEMP;
-  ScalarT egfet = Eg0 - (alphaEg*Temp*Temp)/(Temp+betaEg);
+  
+  // Bandgap calculation - conditional on TLEV
+  ScalarT egfet, egfet1;
+  if((TLEV == 0) || (TLEV == 1))
+  {
+    // Standard bandgap calculation (hardcoded values)
+    egfet = Eg0 - (alphaEg*Temp*Temp)/(Temp+betaEg);
+    egfet1 = Eg0 - (alphaEg*TNOM*TNOM)/(TNOM+betaEg);
+  }
+  else  // TLEV == 2
+  {
+    // Alternative bandgap calculation using GAP1 and GAP2
+    egfet = EG - (GAP1*Temp*Temp)/(Temp+GAP2);
+    egfet1 = EG - (GAP1*TNOM*TNOM)/(TNOM+GAP2);
+  }
+  
   ScalarT arg = -egfet/(2.0*boltz*Temp) +
                Eg300/(boltz*(REFTEMP+REFTEMP));
   ScalarT pbfact = -2.0*vt*(1.5*log(fact2)+Q*arg);
-  ScalarT egfet1 = Eg0 - (alphaEg*TNOM*TNOM)/
-                  (TNOM+betaEg);
   ScalarT arg1 = -egfet1/(2.0*boltz*TNOM) +
 		Eg300/(2.0*boltz*REFTEMP);
   ScalarT fact1 = TNOM/REFTEMP;
@@ -2146,11 +2293,41 @@ bool updateTemperature
 
   tJctCap *= 1.0 + M*(4.0e-4*(Temp-REFTEMP)-gmanew);
 
-  tSatCur = IS*exp(((Temp/TNOM)-1.0)*
-                          EG/(N*vt)+
-                          XTI/N*log(Temp/TNOM));
+  // Saturation current calculation - conditional on TLEV
+  ScalarT lnTRatio = log(Temp / TNOM);
+  
+  if((TLEV == 0) || (TLEV == 1))
+  {
+    // Standard saturation current calculation (existing code)
+    tSatCur = IS*exp(((Temp/TNOM)-1.0)*
+                            EG/(N*vt)+
+                            XTI/N*lnTRatio);
 
-  // Sidewall version of above:
+    tSatSWCur = JSW*exp(((Temp/TNOM)-1.0)*
+                               EG/(NS*vt)+
+                               XTI/NS*lnTRatio);
+  }
+  else  // TLEV == 2
+  {
+    // Alternative saturation current calculation
+    ScalarT vte = N * vt;
+    ScalarT arg0 = egfet1 / (N * vtnom);
+    ScalarT arg1 = egfet / vte;
+    ScalarT arg2 = XTI / N * lnTRatio;
+    
+    tSatCur = IS * exp(arg0 - arg1 + arg2);
+    // Note: subtraction of arg1, not addition
+    
+    // Sidewall version with NS
+    ScalarT vteSW = NS * vt;
+    ScalarT arg0SW = egfet1 / (NS * vtnom);
+    ScalarT arg1SW = egfet / vteSW;
+    ScalarT arg2SW = XTI / NS * lnTRatio;
+    
+    tSatSWCur = JSW * exp(arg0SW - arg1SW + arg2SW);
+  }
+
+  // Sidewall capacitance calculation (same for all TLEV):
   ScalarT pboSW = (VJSW-pbfact1)/fact1;
   ScalarT gmaSWold = (VJSW-pboSW)/pboSW;
 
@@ -2162,10 +2339,6 @@ bool updateTemperature
   ScalarT gmaSWnew = (tJctSWPot-pboSW)/pboSW;
 
   tJctSWCap *= 1.0+MJSW*(4.0e-4*(Temp-CONSTREFTEMP)-gmaSWnew);
-
-  tSatSWCur = JSW*exp(((Temp/TNOM)-1.0)*
-                             EG/(NS*vt)+
-                             XTI/NS*log(Temp/TNOM));
 
   tF1 = tJctPot*(1.0-exp((1.0-M)*xfc))/(1.0-M);
 
@@ -2188,9 +2361,26 @@ bool updateTemperature
   tRS   = RS;
   tCOND = COND;
 
-  tSatCurR = ISR*exp((Temp/TNOM - 1.0)*
-                     EG/(NR*vt)+
-                     XTI/NR*log(Temp/TNOM));
+  // Recombination saturation current - conditional on TLEV
+  if((TLEV == 0) || (TLEV == 1))
+  {
+    // Standard calculation
+    tSatCurR = ISR*exp((Temp/TNOM - 1.0)*
+                              EG/(NR*vt)+
+                              XTI/NR*lnTRatio);
+  }
+  else  // TLEV == 2
+  {
+    // Alternative calculation
+    ScalarT vteR = NR * vt;
+    ScalarT arg0R = egfet1 / (NR * vtnom);
+    ScalarT arg1R = egfet / vteR;
+    ScalarT arg2R = XTI / NR * lnTRatio;
+    
+    tSatCurR = ISR * exp(arg0R - arg1R + arg2R);
+  }
+  
+  tIKF = IKF*(1 + TIKF*(Temp-TNOM));
 
   tIKF = IKF*(1 + TIKF*(Temp-TNOM));
 
@@ -2773,6 +2963,12 @@ void diodeSensitivity::operator()(
       }
     }
 
+    // Level 3 parameters for template
+    fadType XW = mod.XW;
+    fadType GAP1 = mod.GAP1;
+    fadType GAP2 = mod.GAP2;
+    int TLEV = mod.TLEV;
+    
     updateTemperature(
        (*in)->Temp,
        (*in)->dtemp,
@@ -2785,7 +2981,8 @@ void diodeSensitivity::operator()(
        mod.BVGiven,
        mod.IRFGiven,
        TBV1, TBV2, TRS1, TRS2, FC, FCS,
-       mod.getLevel()
+       mod.getLevel(),
+       TLEV, GAP1, GAP2
      );
 
     fadType Id = 0.0;
