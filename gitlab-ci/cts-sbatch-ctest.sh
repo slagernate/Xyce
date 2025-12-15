@@ -43,6 +43,9 @@ rawCmakeArgsList="$1"
 xyceInstallDir="$2"
 CI_PROJECT_DIR="$3"
 
+PATH="/projects/xyce/flexbison/bin:${PATH}"
+export PATH
+
 # note use of the use of the pipeline's xyce-ctest.cmake file, NOT the
 # build repos copy
 ctest --timeout 1200 -DVERBOSITY=5 \
