@@ -32,7 +32,7 @@ GNU_asan.buildTest:
         -S ${CI_PROJECT_DIR}/cmake/ctest/xyce-ctest.cmake 2>&1 | tee ${CI_PROJECT_DIR}/logFiles/xyce-ctest-log.txt
   after_script:
     # copy configure, build and test info from ctest into "logFiles" subdirectory for artifacts
-    - rsync -a ${CI_PROJECT_DIR}/repos/build/Testing/Temporary ${CI_PROJECT_DIR}/logFiles/ctestLogs/
+    - rsync -a ${CI_PROJECT_DIR}/repos/build ${CI_PROJECT_DIR}/logFiles/ctestLogs/
   artifacts:
     paths:
       - logFiles
