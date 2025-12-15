@@ -534,9 +534,15 @@ if(buildReturnVal EQUAL 0)
       message("[VERB1]: PARALLEL_LEVEL being set to ${NUM_PROCS} and label ${XYCE_TEST_LABEL_FILTER}")
     endif()
     set( ENV{XYCE_NO_TRACKING} "notrack")
-    ctest_test(RETURN_VALUE testReturnVal
-      PARALLEL_LEVEL ${NUM_PROCS}
-      INCLUDE_LABEL "${XYCE_TEST_LABEL_FILTER}")
+    if(BUILD_WITH_SANITIZERS)
+      ctest_memcheck(RETURN_VALUE testReturnVal 
+        PARALLEL_LEVEL ${NUM_PROCS}
+        INCLUDE_LABEL ${XYCE_TEST_LABEL_FILTER})
+    else()
+      ctest_test(RETURN_VALUE testReturnVal
+        PARALLEL_LEVEL ${NUM_PROCS}
+        INCLUDE_LABEL ${XYCE_TEST_LABEL_FILTER})
+    endif()
     if(VERBOSITY GREATER 1)
       message("[VERB1]: ctest_test() exited with return value: ${testReturnVal}")
     endif()
