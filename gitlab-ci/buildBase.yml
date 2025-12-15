@@ -23,6 +23,7 @@
     # exit immediately when an error happens
     - set -e
     - myLoginID=$(whoami)
+    - export PATH="/projects/xyce/flexbison/bin:${PATH}"
     # protect against running as anyone other than xyce-jenkins
     - |
       if [[ "${myLoginID}" != "xyce-jenkins" ]]; then

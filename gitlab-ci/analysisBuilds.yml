@@ -22,7 +22,6 @@ GNU_asan.buildTest:
   script:
     # not always a "dbg" build of trilinos so just use "opt"
     - export Trilinos_DIR=${trilinosInstallDir}/opt/${libTypeStr}
-    - export PATH="/projects/xyce/flexbison/bin:${PATH}"
     - cloneAllXyceRepos
     - |
       ctest -DVERBOSITY=5 -C Debug \
