@@ -103,7 +103,7 @@ if( Xyce_USE_APPLEFFT )
 endif()
 
 target_link_libraries(XyceLib PUBLIC ${CURL_LIBRARIES} ${CMAKE_DL_LIBS})
-target_link_libraries(XyceLib PUBLIC Trilinos::all_selected_libs)
+target_link_libraries(XyceLib PUBLIC Trilinos::all_selected_libs sanitizers)
 
 if(OpenMP_FOUND)
      target_link_libraries(XyceLib PUBLIC OpenMP::OpenMP_CXX)

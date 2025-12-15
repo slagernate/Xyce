@@ -22,8 +22,6 @@ include:
     cmakeArgsList: |
       --log-level=STATUS;\
       -DXyce_REGRESSION=ON;\
-      -DFLEX_ROOT=/projects/xyce/flexbison;\
-      -DBISON_ROOT=/projects/xyce/flexbison;\
       -DXyce_USE_FFT=ON;\
       -DXyce_PLUGIN_SUPPORT=ON;\
       -DBUILD_SHARED_LIBS=ON;\

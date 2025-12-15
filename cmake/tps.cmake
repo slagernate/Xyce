@@ -65,6 +65,15 @@ message(STATUS "Looking for Trilinos\n"
   "        Triutils AztecOO Belos TrilinosCouplings\n"
   "   Optional packages:\n"
   "        Isorropia Zoltan ShyLU ShyLU_DDCore Amesos2 Stokhos ROL MKL")
+message(STATUS "Value of Trilinos_DIR: ${Trilinos_DIR}")
+
+# if cmake was invoked with "-DTrilinos_DIR=<...>" set the corresponding
+# environment variable. this effectively gives precedence to the cmake
+# variable over the environment variable.
+if(Trilinos_DIR)
+  set(ENV{Trilinos_DIR} ${Trilinos_DIR})
+endif()
+message(STATUS "Value of ENV{Trilinos_DIR}: $ENV{Trilinos_DIR}")
 find_package(Trilinos CONFIG
   REQUIRED Amesos Epetra EpetraExt Ifpack NOX Teuchos Sacado Triutils
   AztecOO Belos TrilinosCouplings

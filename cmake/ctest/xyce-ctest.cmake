@@ -16,6 +16,7 @@
 #   -DTDEV_BUILD=<TRUE|FALSE>
 #   -DUSE_CPACK_INSTALLER=<TRUE|FALSE>
 #   -DUSE_CMAKE_PATH=</path/to/copy/of/cmake/to/use>
+#   -DPROJECT_SANITIZER_SELECTION="address"
 
 cmake_minimum_required(VERSION 3.23)
 
@@ -329,6 +330,12 @@ endif()
 # but for now it's hard-coded to 1am
 set(CTEST_NIGHTLY_START_TIME "01:00:00 MDT")
 
+# initialize return codes from ctest_*() steps
+set(submitReturnVal 0)
+set(confReturnVal   0)
+set(buildReturnVal  0)
+set(testReturnVal   0)
+
 # use the "hostname" command as the CTEST_SITE variable, which is used
 # in the "Site" column on the dashboard
 find_program(HNAME NAMES hostname)
@@ -474,6 +481,34 @@ endif()
 set(CTEST_CONFIGURE_COMMAND "${CTEST_CONFIGURE_COMMAND} ${XYCE_CMAKE_CONF_ARG}")
 set(CTEST_CONFIGURE_COMMAND "${CTEST_CONFIGURE_COMMAND} -DBUILD_TESTING=${BUILD_TESTING}")
 set(CTEST_CONFIGURE_COMMAND "${CTEST_CONFIGURE_COMMAND} ${CTEST_SOURCE_DIRECTORY}")
+
+# ASAN
+if(NOT PROJECT_SANITIZER_SELECTION)
+  set(BUILD_WITH_SANITIZERS OFF)
+else()
+  if(PROJECT_SANITIZER_SELECTION STREQUAL "address")
+    include(${CMAKE_CURRENT_LIST_DIR}/../sanitizers.cmake)
+    setup_sanitizer_interface(ON)
+
+    set(BUILD_WITH_SANITIZERS ON)
+
+    # this doesn't seem to work. There's a complaint during run about
+    # not being able to parse the suppressions file. Instead we're
+    # relying on setting it via an environment variable property set
+    # for each test. I suspect the reason for the failure is that it's
+    # passing an LSAN suppressions file in as the ASAN suppresions
+    # file. This is a consequence of building executables with all
+    # sanitization on instead of just address sanitization.
+    ###    set(CTEST_MEMORYCHECK_SUPPRESSIONS_FILE "'${LSAN_BLACKLIST_PATH}'")
+    set(CTEST_MEMORYCHECK_TYPE "AddressSanitizer")
+    set(CTEST_MEMORYCHECK_SANITIZER_OPTIONS "${ASAN_OPTIONS}")
+    
+    set(CTEST_CONFIGURE_COMMAND "${CTEST_CONFIGURE_COMMAND} -DBUILD_WITH_SANITIZERS=ON")
+    set(CTEST_CONFIGURE_COMMAND "${CTEST_CONFIGURE_COMMAND} -DPROJECT_SANITIZER_SELECTION=${PROJECT_SANITIZER_SELECTION}")
+  else()
+    message(FATAL_ERROR "Unknown sanitizer selection \"${PROJECT_SANITIZER_SELECTION}\"")
+  endif()
+endif()
 
 if(VERBOSITY GREATER 1)
   message("[VERB1]: CTEST_CONFIGURE_COMMAND = ${CTEST_CONFIGURE_COMMAND}")
@@ -641,7 +676,7 @@ if(DASHSUBMIT)
   endif() 
 endif()
 
-math(EXPR totalRetVal "${submitReturnVal}+${confReturnVal}+${buildReturnVal}+${testReturnVal}")
-if (NOT totalRetVal EQUAL 0)
-  MESSAGE(FATAL_ERROR "There were failures during ctest")
+# exit with error if any of the ctest_*() functions failed
+if (submitReturnVal OR confReturnVal OR buildReturnVal OR testReturnVal)
+  message(FATAL_ERROR "There were failures during ctest")
 endif()

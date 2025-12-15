@@ -3,14 +3,26 @@
 #   *) While you can, in theory, override any of the variables below via
 #      the "Run Pipeline" UI or in the curl command, in practice you
 #      should try to only modify the variables in all caps.
+
+include:
+  - gitlab-ci/buildBase.yml
+  - gitlab-ci/cleanTPLInstalls.yml
+  - gitlab-ci/buildTPLs.yml
+  - gitlab-ci/buildTestInstallXyce.yml
+  - gitlab-ci/generateModules.yml
+  - gitlab-ci/finalize.yml
+  - gitlab-ci/testModules.yml
+  - gitlab-ci/analysisBuilds.yml
+
 stages:
-  - deploy
+  - triggerAsEntity
   - cleanTPLInstalls
   - buildTPLs
   - buildTestInstallXyce
   - generateModules
   - finalize
   - testModules
+  - asanBuildTest
 
 variables:
   DO_TPL_BUILDS: "OFF"
@@ -18,6 +30,11 @@ variables:
   DO_MODULE_GENERATION: "ON"
   DO_FINALIZE: "ON"
   DO_TEST_MODULES: "ON"
+
+  # generally you want the steps above OFF if this is ON and
+  # vice-versa 
+  DO_XYCE_ASAN_BUILDTEST: "OFF"
+
   XYCE_NO_TRACKING: "TRUE"
 
   BASE_INSTALL_DIR: /projects/xyce_user/install
@@ -58,6 +75,9 @@ variables:
   # set to "-v" for verbose output from ninja
   VerboseNinja: ""
 
+  # This helps a lot when debugging pipelines
+  CI_DEBUG_TRACE: "true"
+
   CommonModules: "
     aue/git
     aue/git-lfs
@@ -72,19 +92,10 @@ variables:
   # variable and shouldn't be modified
   GIT_DEPTH: 0
 
-include:
-  - gitlab-ci/buildBase.yml
-  - gitlab-ci/cleanTPLInstalls.yml
-  - gitlab-ci/buildTPLs.yml
-  - gitlab-ci/buildTestInstallXyce.yml
-  - gitlab-ci/generateModules.yml
-  - gitlab-ci/finalize.yml
-  - gitlab-ci/testModules.yml
-
 # this is the stage that will trigger the rest of the pipeline stages,
 # dependent on the value of the releavant "DO_*" booleans.
 trigger_pipeline:
-  stage: deploy
+  stage: triggerAsEntity
   id_tokens:
     CI_JOB_JWT:
       aud: https://cee-gitlab.sandia.gov
@@ -94,21 +105,19 @@ trigger_pipeline:
     # no need to clone repo
     GIT_STRATEGY: none
   script:
-    - echo "XYCE_JENKINS_PAT = ${XYCE_JENKINS_PAT}"
-    - echo "XYCE_JENKINS_PIPELINE_TRIGGER_TOKEN = ${XYCE_JENKINS_PIPELINE_TRIGGER_TOKEN}"
     - echo "CI_PROJECT_ID = ${CI_PROJECT_ID}"
-    # XYCE_JENKINS_PAT and XYCE_JENKINS_PIPELINE_TRIGGER_TOKEN are
-    # variables defined via the cee-gitlab UI and should be masked
+    # XYCE_JENKINS_PIPELINE_TRIGGER_TOKEN is a variable
+    # defined via the cee-gitlab UI and will be masked
     - |
       curl --request POST \
-        --header "PRIVATE-TOKEN: ${XYCE_JENKINS_PAT}" \
         --form token=${XYCE_JENKINS_PIPELINE_TRIGGER_TOKEN} \
         --form ref=${CI_COMMIT_BRANCH} \
         --form "variables[DO_TPL_BUILDS]=${DO_TPL_BUILDS}" \
         --form "variables[DO_XYCE_BUILDS]=${DO_XYCE_BUILDS}" \
         --form "variables[DO_MODULE_GENERATION]=${DO_MODULE_GENERATION}" \
         --form "variables[DO_FINALIZE]=${DO_FINALIZE}" \
-        --form "variables[CTS_LICENSE_ARG]=${CTS_LICENSE_ARG}" \
+        --form "variables[DO_TEST_MODULES]=${DO_TEST_MODULES}" \
+        --form "variables[DO_XYCE_ASAN_BUILDTEST]=${DO_XYCE_ASAN_BUILDTEST}" \
         --form "variables[BASE_INSTALL_DIR]=${BASE_INSTALL_DIR}" \
         --form "variables[DEFAULT_BRANCH]=${DEFAULT_BRANCH}" \
         --form "variables[XYCE_INSTALL_STRING]=${XYCE_INSTALL_STRING}" \

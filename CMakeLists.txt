@@ -55,6 +55,9 @@ option(Xyce_GTEST_UNIT_TESTS "Build google test based unit tests" OFF)
 
 include(cmake/config.cmake)
 include(cmake/utilities.cmake)
+include(cmake/sanitizers.cmake)
+
+setup_sanitizer_interface()
 
 # print out Xyce-related variables
 if (CMAKE_VERSION VERSION_GREATER "3.24.0")
