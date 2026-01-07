@@ -62,18 +62,21 @@ macro( setup_sanitizer_interface )
     set(XYCE_LSAN_OPTIONS "${TMP_COMMON}:${TMP_LSAN}")
     set(XYCE_UBSAN_OPTIONS "${TMP_COMMON}:${TMP_UBSAN}")
 
-    # for cmake invoke the following as well
-    if(${ARGC} EQUAL 0)
+  endif()
 
-      message(STATUS "Setting up sanitizer interface")
-      add_library(sanitizers INTERFACE)
-      
-      target_compile_options(sanitizers INTERFACE
-        $<$<AND:$<CXX_COMPILER_ID:Clang,GNU>,$<BOOL:${BUILD_WITH_SANITIZERS}>>:${SANITIZER_COMPILER_FLAGS}>
-      )
-      target_link_options(sanitizers INTERFACE
-        $<$<AND:$<CXX_COMPILER_ID:Clang,GNU>,$<BOOL:${BUILD_WITH_SANITIZERS}>>:${SANITIZER_LINKER_FLAGS}>
-      )
-    endif()
+  # for cmake invoke the following as well. note this always needs to be executed
+  # to set up the appropriate interface even though it will be empty when
+  # not performing a sanitized build.
+  if(${ARGC} EQUAL 0)
+
+    message(STATUS "Setting up sanitizer interface")
+    add_library(sanitizers INTERFACE)
+    
+    target_compile_options(sanitizers INTERFACE
+      $<$<AND:$<CXX_COMPILER_ID:Clang,GNU>,$<BOOL:${BUILD_WITH_SANITIZERS}>>:${SANITIZER_COMPILER_FLAGS}>
+    )
+    target_link_options(sanitizers INTERFACE
+      $<$<AND:$<CXX_COMPILER_ID:Clang,GNU>,$<BOOL:${BUILD_WITH_SANITIZERS}>>:${SANITIZER_LINKER_FLAGS}>
+    )
   endif()
 endmacro()
