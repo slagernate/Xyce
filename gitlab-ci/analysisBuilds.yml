@@ -3,39 +3,63 @@ include:
 
 ##################################
 ## GNU, debug, ASAN build of xyce
-GNU_asan.buildTest:
+GNU_sanitize.buildTest:
+  stage: sanitizerBuildTest
   tags:
-    - cee.build
+    - cee-build034
   id_tokens:
     CI_JOB_JWT:
       aud: https://cee-gitlab.sandia.gov
   extends:
     - .build_base
     - .gnu_serial_vars
-  stage: asanBuildTest
   variables:
     cmakeBuildType: "Debug"
-    MYBUILDNAME: "DefectAnalysis-${archFullName}"
+    MYBUILDNAME: "Sanitizer-${archFullName}"
     TESTSET: "Experimental"
     branch: ${CI_COMMIT_BRANCH}
-    cmakeArgsList: "-DXyce_REGRESSION=ON;-DXyce_USE_FFT=ON;-DXyce_PLUGIN_SUPPORT=ON;-DBUILD_SHARED_LIBS=ON;-DCMAKE_BUILD_TYPE=Debug;-DBUILD_TESTING=ON;-DXyce_GTEST_UNIT_TESTS=OFF;-DXyce_PARALLEL_MPI=OFF;-DXyce_RAD_MODELS=ON;-DXyce_USE_CURL=OFF;-DXyce_AS_SPECIAL_CHARON_TPL=OFF"
+    cmakeArgsList: >-
+      -DXyce_REGRESSION=ON
+      -DXyce_USE_FFT=ON
+      -DXyce_PLUGIN_SUPPORT=ON
+      -DBUILD_SHARED_LIBS=ON
+      -DCMAKE_BUILD_TYPE=Debug
+      -DBUILD_TESTING=ON
+      -DXyce_TEST_BINARIES=OFF
+      -DXyce_GTEST_UNIT_TESTS=OFF
+      -DXyce_PARALLEL_MPI=OFF
+      -DXyce_RAD_MODELS=ON
+      -DXyce_USE_CURL=OFF
+      -DXyce_AS_SPECIAL_CHARON_TPL=OFF
+      -DXyce_ADMS_MODELS=ON
   script:
-    # not always a "dbg" build of trilinos so just use "opt"
-    - export Trilinos_DIR=${trilinosInstallDir}/opt/${libTypeStr}
+    # activate the virtual environment(s) for testing
+    - set +e
+    - source "${HOME}/.bashrc"
+    - set -e
+    - module unload aue/anaconda3
+    - spack env activate xyceTesting
+    - source /projects/xyce_user/pythonVirtEnv/Xyce/bin/activate
+    # hard-code for a "dbg" build of trilinos
+    - export Trilinos_DIR=${trilinosInstallDir}/dbg/${libTypeStr}
     - cloneAllXyceRepos
     - |
-      ctest -DVERBOSITY=5 -C Debug \
+      TESTGROUP="Nightly"
+      CM_ARGS=$(printf "%s;" ${cmakeArgsList})
+      CM_ARGS=${CM_ARGS%;}    # strip final “;”
+      ctest -DVERBOSITY=5 -C ${cmakeBuildType} \
         -DUSE_GITLAB_CI_TESTING=ON \
-        -DCMAKE_ARGS_LIST="${cmakeArgsList}" \
-        -DPROJECT_SANITIZER_SELECTION="address" \
+        -DCDASH_GROUP="Nightly" \
+        -DCMAKE_ARGS_LIST="${CM_ARGS}" \
+        -DBUILD_WITH_SANITIZERS=ON \
         -S ${CI_PROJECT_DIR}/cmake/ctest/xyce-ctest.cmake 2>&1 | tee ${CI_PROJECT_DIR}/logFiles/xyce-ctest-log.txt
   after_script:
     # copy configure, build and test info from ctest into "logFiles" subdirectory for artifacts
-    - rsync -a ${CI_PROJECT_DIR}/repos/build ${CI_PROJECT_DIR}/logFiles/ctestLogs/
+    - rsync -a ${CI_PROJECT_DIR}/repos/build/Testing ${CI_PROJECT_DIR}/logFiles/ctestLogs/
   artifacts:
     paths:
       - logFiles
     expire_in: 1 week
     when: always
   rules:
-    - if: $DO_XYCE_ASAN_BUILDTEST == "ON" && $CI_PIPELINE_SOURCE == "trigger"
+    - if: $DO_XYCE_SANITIZER_BUILDTEST == "ON" && $CI_PIPELINE_SOURCE == "trigger"

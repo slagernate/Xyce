@@ -22,7 +22,7 @@ stages:
   - generateModules
   - finalize
   - testModules
-  - asanBuildTest
+  - sanitizerBuildTest
 
 variables:
   DO_TPL_BUILDS: "OFF"
@@ -33,7 +33,7 @@ variables:
 
   # generally you want the steps above OFF if this is ON and
   # vice-versa 
-  DO_XYCE_ASAN_BUILDTEST: "OFF"
+  DO_XYCE_SANITIZER_BUILDTEST: "OFF"
 
   XYCE_NO_TRACKING: "TRUE"
 
@@ -66,14 +66,15 @@ variables:
   XyceSandiaModelsBranch: ""
   XyceSandiaRegressionBranch: ""
 
+  # xyce repo. for debugging in your own fork change this. 
+  mainXyceRepo: "Xyce/code/uur-proprietary/Xyce.git"
+  ##mainXyceRepo: "glhenni/Xyce.git"
+
   # these correspond directly to git entities, either tags or
   # branches, to be built
   TrilinosVersion: trilinos-release-14-4-0
   SuiteSparseVersion: v7.8.3
-  ADMSVersion: release-2.3.7
-
-  # set to "-v" for verbose output from ninja
-  VerboseNinja: ""
+  ADMSVersion: release-2.3.7.XYCE
 
   # This helps a lot when debugging pipelines
   CI_DEBUG_TRACE: "true"
@@ -117,7 +118,7 @@ trigger_pipeline:
         --form "variables[DO_MODULE_GENERATION]=${DO_MODULE_GENERATION}" \
         --form "variables[DO_FINALIZE]=${DO_FINALIZE}" \
         --form "variables[DO_TEST_MODULES]=${DO_TEST_MODULES}" \
-        --form "variables[DO_XYCE_ASAN_BUILDTEST]=${DO_XYCE_ASAN_BUILDTEST}" \
+        --form "variables[DO_XYCE_SANITIZER_BUILDTEST]=${DO_XYCE_SANITIZER_BUILDTEST}" \
         --form "variables[BASE_INSTALL_DIR]=${BASE_INSTALL_DIR}" \
         --form "variables[DEFAULT_BRANCH]=${DEFAULT_BRANCH}" \
         --form "variables[XYCE_INSTALL_STRING]=${XYCE_INSTALL_STRING}" \

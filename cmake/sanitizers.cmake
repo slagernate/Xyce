@@ -2,55 +2,78 @@
 # Also sets some env variables useful for adding to tests.
 macro( setup_sanitizer_interface )
 
-  message(STATUS "Sanitizer selection: ${PROJECT_SANITIZER_SELECTION}")
+  if(BUILD_WITH_SANITIZERS)
 
-  if(PROJECT_SANITIZER_SELECTION STREQUAL "address" OR
-      PROJECT_SANITIZER_SELECTION STREQUAL "all")
+    message(STATUS "Setting up compiler flags and runtime environment for ASAN")
     set(SANITIZER_COMPILER_FLAGS
       -fno-omit-frame-pointer
-      -fsanitize-recover=all
-      -fsanitize=address
-      -fsanitize=undefined
+      -fno-sanitize-recover=undefined
+      -fsanitize=address,undefined
       -fno-sanitize=vptr
-      )
+    )
     set(SANITIZER_LINKER_FLAGS
-      -fsanitize=address
-      -fsanitize=undefined
-      )
+      -fsanitize=address,undefined
+    )
 
-    # internal variable
-    set(BUILD_WITH_SANITIZERS ON)
-  else()
-    set(BUILD_WITH_SANITIZERS OFF)
+    set(commonOptions
+      "verbosity=0"
+      "halt_on_error=1"
+      "symbolize=1"
+      "color=never"
+      "print_stacktrace=1"
+    )
+
+    set(asanOptions
+      "report_globals=1"
+      "check_initialization_order=1"
+      "replace_str=1"
+      "replace_intrin=1"
+      "detect_stack_use_after_return=1"
+      "strict_memcmp=1"
+      "detect_leaks=1"
+      "detect_odr_violation=1"
+      "strict_string_checks=1"
+      "detect_invalid_pointer_pairs=1"
+    )
+
+    set(lsanOptions
+      "atexit=1"
+    )
+
+    set(ubsanOptions
+      "integer-divide-by-zero=1"
+      "float-cast-overflow=1"
+      "implicit-conversion=1"
+      "nonnull-attribute=1"
+      "nullability-attribute=1"
+      "pointer-overflow=1"
+      "shift-base=1"
+      "shift-exponent=1"
+      "signed-integer-overflow=1"
+      "unreachable=1"
+    )
+
+    list(JOIN commonOptions ":" TMP_COMMON)
+    list(JOIN asanOptions ":" TMP_ASAN)
+    list(JOIN lsanOptions ":" TMP_LSAN)
+    list(JOIN ubsanOptions ":" TMP_UBSAN)
+
+    set(XYCE_ASAN_OPTIONS "${TMP_COMMON}:${TMP_ASAN}")
+    set(XYCE_LSAN_OPTIONS "${TMP_COMMON}:${TMP_LSAN}")
+    set(XYCE_UBSAN_OPTIONS "${TMP_COMMON}:${TMP_UBSAN}")
+
+    # for cmake invoke the following as well
+    if(${ARGC} EQUAL 0)
+
+      message(STATUS "Setting up sanitizer interface")
+      add_library(sanitizers INTERFACE)
+      
+      target_compile_options(sanitizers INTERFACE
+        $<$<AND:$<CXX_COMPILER_ID:Clang,GNU>,$<BOOL:${BUILD_WITH_SANITIZERS}>>:${SANITIZER_COMPILER_FLAGS}>
+      )
+      target_link_options(sanitizers INTERFACE
+        $<$<AND:$<CXX_COMPILER_ID:Clang,GNU>,$<BOOL:${BUILD_WITH_SANITIZERS}>>:${SANITIZER_LINKER_FLAGS}>
+      )
+    endif()
   endif()
-
-  set(LSAN_BLACKLIST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lsan-blacklist.txt")
-
-  set(ASAN_OPTIONS "halt_on_error=true:fast_unwind_on_malloc=1:detect_odr_violation=1" )
-  set(LSAN_OPTIONS "suppressions=\"${LSAN_BLACKLIST_PATH}\"")
-  set(UBSAN_OPTIONS "print_stacktrace=1")
-
-  # for cmake invoke the following as well
-  if(${ARGC} EQUAL 0)
-
-    message(STATUS "Setting up ASAN interface")
-    add_library(sanitizers INTERFACE IMPORTED)
-    
-    target_compile_options(sanitizers INTERFACE
-      $<$<AND:$<CXX_COMPILER_ID:Clang,GNU>,$<BOOL:${BUILD_WITH_SANITIZERS}>>:${SANITIZER_COMPILER_FLAGS}>
-      )
-    target_link_options(sanitizers INTERFACE
-      $<$<AND:$<CXX_COMPILER_ID:Clang,GNU>,$<BOOL:${BUILD_WITH_SANITIZERS}>>:${SANITIZER_LINKER_FLAGS}>
-      )
-  endif()
-
 endmacro()
-
-# Sets sanitizer environment variables for a test target
-function( set_sanitizer_env_variables_for_test test_name )
-
-  if(BUILD_WITH_SANITIZERS)
-    set_property(TEST "${test_name}" PROPERTY ENVIRONMENT "ASAN_OPTIONS=${ASAN_OPTIONS};LSAN_OPTIONS=${LSAN_OPTIONS};UBSAN_OPTIONS=${UBSAN_OPTIONS};GEMMA_MAXRANKS=${gemmaMaxRanks}")
-  endif()
-
-endfunction()

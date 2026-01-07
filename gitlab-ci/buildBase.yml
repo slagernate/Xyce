@@ -36,9 +36,11 @@
     # make a directory for any files. this will be use to create
     # project artifacts that can help diagnose problems with the
     # pipeline(s)
+    - rm -rf ${CI_PROJECT_DIR}/logFiles || true
     - mkdir -p ${CI_PROJECT_DIR}/logFiles
     # directory where xyce repos will be cloned, including another
     # copy of the "Xyce" repo itself
+    - rm -rf ${CI_PROJECT_DIR}/repos || true
     - mkdir -p ${CI_PROJECT_DIR}/repos
     # load modules for build
     - |
@@ -98,13 +100,13 @@
           local branch="$1"
           local repoName="$2"
           local cloneToDir="$3"
-          git clone --branch ${branch} git@cee-gitlab.sandia.gov:Xyce/code/${repoName} ${cloneToDir} || { echo "Error: Failed to clone ${repoName} branch ${branch} to ${cloneToDir}"; exit 1; }
+          git clone --branch ${branch} git@cee-gitlab.sandia.gov:${repoName} ${cloneToDir} || { echo "Error: Failed to clone ${repoName} branch ${branch} to ${cloneToDir}"; exit 1; }
         }
         # clone all relevant repositories
-        cloneRepo "${XyceBranch}" "uur-proprietary/Xyce.git" "${CI_PROJECT_DIR}/repos/Xyce"
-        cloneRepo "${XyceSandiaModelsBranch}" "ouo-exp/Xyce_SandiaModels.git" "${CI_PROJECT_DIR}/repos/Xyce/src/DeviceModelPKG/SandiaModels"
-        cloneRepo "${XyceNonFreeBranch}" "uur-proprietary/Xyce_NonFree.git" "${CI_PROJECT_DIR}/repos/Xyce/src/DeviceModelPKG/Xyce_NonFree"
-        cloneRepo "${XyceRegressionBranch}" "uur-proprietary/Xyce_Regression.git" "${CI_PROJECT_DIR}/repos/Xyce/Xyce_Regression"
-        cloneRepo "${XyceSandiaRegressionBranch}" "ouo-exp/Xyce_SandiaRegression.git" "${CI_PROJECT_DIR}/repos/Xyce/Xyce_Regression/Xyce_SandiaRegression"
-        cloneRepo "${XyceFTRegressionBranch}" "uur-proprietary/Xyce_FastrackRegression.git" "${CI_PROJECT_DIR}/repos/Xyce/Xyce_Regression/Xyce_FastrackRegression"
+        cloneRepo "${XyceBranch}" "${mainXyceRepo}" "${CI_PROJECT_DIR}/repos/Xyce"
+        cloneRepo "${XyceSandiaModelsBranch}" "Xyce/code/ouo-exp/Xyce_SandiaModels.git" "${CI_PROJECT_DIR}/repos/Xyce/src/DeviceModelPKG/SandiaModels"
+        cloneRepo "${XyceNonFreeBranch}" "Xyce/code/uur-proprietary/Xyce_NonFree.git" "${CI_PROJECT_DIR}/repos/Xyce/src/DeviceModelPKG/Xyce_NonFree"
+        cloneRepo "${XyceRegressionBranch}" "Xyce/code/uur-proprietary/Xyce_Regression.git" "${CI_PROJECT_DIR}/repos/Xyce/Xyce_Regression"
+        cloneRepo "${XyceSandiaRegressionBranch}" "Xyce/code/ouo-exp/Xyce_SandiaRegression.git" "${CI_PROJECT_DIR}/repos/Xyce/Xyce_Regression/Xyce_SandiaRegression"
+        cloneRepo "${XyceFTRegressionBranch}" "Xyce/code/uur-proprietary/Xyce_FastrackRegression.git" "${CI_PROJECT_DIR}/repos/Xyce/Xyce_Regression/Xyce_FastrackRegression"
       }

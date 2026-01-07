@@ -62,6 +62,9 @@ set(Xyce_CHARON                    FALSE CACHE BOOL "Enable Charon device suppor
 # installation directory
 option(Xyce_AS_SPECIAL_CHARON_TPL "Build xyce library as required by charon" OFF)
 
+# to use built-in sanitizers (ASAN,LSAN,UBSAN)
+option(BUILD_WITH_SANITIZERS "Enable the built-in sanitizers for the build and tests" OFF)
+
 # Verbose output
 set(Xyce_VERBOSE_CONDUCTANCE       FALSE CACHE BOOL "Enable verbose output for ???")
 set(Xyce_VERBOSE_LINEAR            FALSE CACHE BOOL "Enable verbose output in the linear solver")
@@ -227,7 +230,7 @@ endif ()
 if (Xyce_RAD_MODELS)
      if ((Xyce_ATHENA OR NOT DEFINED Xyce_ATHENA) AND EXISTS "${Xyce_RAD_MODELS_DIR}/ATHENA")
           message(STATUS "Looking for Boost")
-          find_package(Boost)
+          find_package(Boost CONFIG)
           if (Boost_FOUND)
                message(STATUS "Enabling the ATHENA model")
                set (Xyce_ATHENA TRUE CACHE BOOL "Include the ATHENA model, if it exists")

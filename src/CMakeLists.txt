@@ -103,7 +103,9 @@ if( Xyce_USE_APPLEFFT )
 endif()
 
 target_link_libraries(XyceLib PUBLIC ${CURL_LIBRARIES} ${CMAKE_DL_LIBS})
-target_link_libraries(XyceLib PUBLIC Trilinos::all_selected_libs sanitizers)
+target_link_libraries(XyceLib 
+  PUBLIC Trilinos::all_selected_libs
+  PRIVATE sanitizers)
 
 if(OpenMP_FOUND)
      target_link_libraries(XyceLib PUBLIC OpenMP::OpenMP_CXX)
@@ -121,7 +123,9 @@ endif()
 add_executable(Xyce Xyce.C)
 #target_include_directories (Xyce PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}> ${XYCE_INCLUDE_DIRECTORIES})
 target_include_directories (XyceLib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}> $<INSTALL_INTERFACE:include>)
-target_link_libraries(Xyce XyceLib)
+target_link_libraries(Xyce 
+  PUBLIC XyceLib
+  PRIVATE sanitizers)
 
 # ---- And the installation of them. ----------------
 # Keep this in mind if Xyce needs to support building both static and shared libraries
@@ -147,7 +151,7 @@ if(BUILD_SHARED_LIBS AND CMAKE_HOST_WIN32 )
   # be an interface library with a suffix ".lib" that is used in linking 
   # the executable to the dynamic library ".dll"  This interface library is 
   # needed and should not be confused with a static library which also ends
-  # in ".lib" under Windwos.  So to avoid confusion, make the shared library
+  # in ".lib" under Windows.  So to avoid confusion, make the shared library
   # name xyce-share.dll and xyce-share.lib for the interface library under 
   # Windows. 
   #
@@ -155,7 +159,7 @@ if(BUILD_SHARED_LIBS AND CMAKE_HOST_WIN32 )
   # A Static library named "xyce" will produce a file named xyce.lib.
   # A Shared library named "xyce" will produce two files, one named xyce.dll
   # and another named xyce.lib, which is not the same as the static library.
-  # It is an interface library.  Interface libraries may be quite foriegn to
+  # It is an interface library.  Interface libraries may be quite foreign to
   # Unix programmers. For right now the only way I can tell xyce.lib the
   # static library apart from xyce.lib the interface library is that the
   # interface library is smaller in size.  Which isn't a very clear

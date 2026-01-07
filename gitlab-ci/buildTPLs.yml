@@ -18,13 +18,14 @@ include:
         git clone git@cee-gitlab.sandia.gov:ramsesmodsim/devops/Trilinos.git
       fi
       if [ ! -d ADMS ]; then
-        git clone https://github.com/Qucs/ADMS.git
+        git clone git@cee-gitlab.sandia.gov:Xyce/auxiliary/ADMS.git
       fi
     #########################################################################
     #########################################################################
     # build ADMS
     - cd ${CI_PROJECT_DIR}/ADMS
     - git checkout ${ADMSVersion} || (echo "Failed to checkout ADMS version ${ADMSVersion}";exit 1)
+    - git pull || true # if ADMSVersion is a tag this will fail, so ignore
     - mkdir -p ${CI_PROJECT_DIR}/build/adms
     - cd ${CI_PROJECT_DIR}/build/adms
     - cmake
@@ -101,6 +102,15 @@ GNU_serial.dyn.buildTPLs:
   variables:
       buildShared: "ON"
       buildStatic: "OFF"
+
+GNU_serial.dyn.Debug.buildTPLs:
+  extends:
+    - .build_tpls
+    - .gnu_serial_vars
+  variables:
+      buildShared: "ON"
+      buildStatic: "OFF"
+      cmakeBuildType: "Debug"
 
 GNU_serial.static.buildTPLs:
   extends:

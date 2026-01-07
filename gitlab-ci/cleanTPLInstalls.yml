@@ -23,6 +23,13 @@ GNU_serial.cleanup:
     - .clean_tpl_installs
     - .gnu_serial_vars
 
+GNU_serial.Debug.cleanup:
+  variables:
+    cmakeBuildType: "Debug"
+  extends:
+    - .clean_tpl_installs
+    - .gnu_serial_vars
+
 GNU_OpenMPI.cleanup:
   extends:
     - .clean_tpl_installs
