@@ -105,7 +105,7 @@ endif()
 target_link_libraries(XyceLib PUBLIC ${CURL_LIBRARIES} ${CMAKE_DL_LIBS})
 target_link_libraries(XyceLib 
   PUBLIC Trilinos::all_selected_libs
-  PRIVATE sanitizers)
+  PRIVATE $<BUILD_LOCAL_INTERFACE:sanitizers>)
 
 if(OpenMP_FOUND)
      target_link_libraries(XyceLib PUBLIC OpenMP::OpenMP_CXX)
@@ -125,7 +125,7 @@ add_executable(Xyce Xyce.C)
 target_include_directories (XyceLib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}> $<INSTALL_INTERFACE:include>)
 target_link_libraries(Xyce 
   PUBLIC XyceLib
-  PRIVATE sanitizers)
+  PRIVATE $<BUILD_LOCAL_INTERFACE:sanitizers>)
 
 # ---- And the installation of them. ----------------
 # Keep this in mind if Xyce needs to support building both static and shared libraries
