@@ -389,11 +389,19 @@ endif()
 set(CTEST_BUILD_NAME "$ENV{MYBUILDNAME}")
 
 # the "-DNUM_PROCS=N" is highest priority, followed by the environment
-# variable NUM_PROCS and finally use 8 as the default if it's not
-# specified
+# variable NUM_PROCS and finally try to get the count of physical cores
+# on the current platform and use that. If that fails use a default value.
 if(NOT DEFINED NUM_PROCS)
   if(NOT DEFINED ENV{NUM_PROCS})
-    set(NUM_PROCS 8)
+    # try to determine the number of physical cores if the user
+    # didn't specify a value
+    cmake_host_system_information(RESULT physCoreCount QUERY NUMBER_OF_PHYSICAL_CORES)
+    if (physCoreCount)
+      set(NUM_PROCS ${physCoreCount})
+    else()
+      # default if all else fails
+      set(NUM_PROCS 8)
+    endif()
   else()
     set(NUM_PROCS $ENV{NUM_PROCS})
   endif()
