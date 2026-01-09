@@ -835,7 +835,7 @@ bool Instance::updateIntermediateVars ()
         // copies by value
         storeVars[0]=nextStoreVars_;
         storeVars[1]=currStoreVars_;
-        storeVars[1]=lastStoreVars_;
+        storeVars[2]=lastStoreVars_;
       }
 
       // Copy out the state variables we need.
