@@ -18,7 +18,7 @@
 #   -DUSE_CMAKE_PATH=</path/to/copy/of/cmake/to/use>
 #   -DBUILD_WITH_SANITIZERS=<TRUE|FALSE>
 
-cmake_minimum_required(VERSION 3.26)
+cmake_minimum_required(VERSION 3.23)
 
 # DEPRECATED: You shouldn't be making changes or updating things in
 # here unless absolutely necessary. We are moving to a ctest-based
