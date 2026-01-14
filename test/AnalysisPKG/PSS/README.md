@@ -54,19 +54,31 @@ ctest -L pss
 - ✅ Phase condition computation
 - ✅ Autonomous PSS (structure ready, implementation pending)
 
+### Phase 2 Component Unit Tests (Complete - No Infrastructure Needed)
+- ✅ Residual computation - Solution vector
+- ✅ Residual computation - Combined (solution, state, store)
+- ✅ Newton update computation
+- ✅ Periodic BC tolerance checking
+- ✅ Vector update operations
+- ✅ Residual norm edge cases
+- ✅ Convergence criteria
+
+**Note:** These are true unit tests using `std::vector<double>` to test core algorithms
+in isolation. They don't require Xyce infrastructure and can run immediately.
+
 ### Phase 2 Integration Tests (Structure Created, Implementation Pending)
 - ⏳ integrateOnePeriod() - Basic integration test
-- ⏳ Periodic BC enforcement - Solution vector
-- ⏳ Periodic BC enforcement - State vector
-- ⏳ Periodic BC enforcement - Store vector
-- ⏳ Newton iteration convergence
+- ⏳ Periodic BC enforcement - Solution vector (end-to-end)
+- ⏳ Periodic BC enforcement - State vector (end-to-end)
+- ⏳ Periodic BC enforcement - Store vector (end-to-end)
+- ⏳ Newton iteration convergence (end-to-end)
 - ⏳ Simple RC circuit integration test
 - ⏳ RLC circuit integration test
 - ⏳ Integration failure handling
 
-**Note:** Phase 2 tests require full Xyce infrastructure (AnalysisManager, DataStore, time integrator, etc.). 
-Currently, test structure is in place but tests are skipped until infrastructure is available.
-These are integration tests rather than pure unit tests.
+**Note:** Integration tests require full Xyce infrastructure (AnalysisManager, DataStore, 
+time integrator, etc.) and test the full stack. Component tests above test the algorithms
+without infrastructure.
 
 ### Future Tests (To Be Added)
 - Performance/multi-core tests
