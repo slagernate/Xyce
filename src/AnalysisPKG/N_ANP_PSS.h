@@ -130,6 +130,9 @@ public:
   void printProgress(std::ostream &os);
 
 private:
+  // Helper functions for shooting method
+  bool integrateOnePeriod();
+  Linear::Vector *computeNewtonUpdate(Linear::Vector *residual, Linear::Vector *x0);
   AnalysisManager &     analysisManager_;
   Loader::Loader &      loader_;
   Linear::System *      linearSystemPtr_;

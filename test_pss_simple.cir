@@ -1,0 +1,12 @@
+* Simple PSS test circuit
+* RC circuit with periodic voltage source
+
+V1 1 0 SIN(0 1 1e6)  ; 1MHz, 1V amplitude
+R1 1 2 1k
+C1 2 0 1n
+
+.PSS 1u
+.PRINT PSS V(2) I(V1)
+
+.END
+

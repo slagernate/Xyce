@@ -32,6 +32,10 @@
 #include <N_UTL_OptionBlock.h>
 #include <N_UTL_Param.h>
 #include <N_ERH_ErrorMgr.h>
+#include <N_TIA_DataStore.h>
+#include <N_TIA_StepErrorControl.h>
+#include <N_LAS_Vector.h>
+#include <N_UTL_Math.h>
 
 namespace Xyce {
 namespace Analysis {
@@ -210,6 +214,25 @@ void PSS::finalExpressionBasedSetup()
 //-----------------------------------------------------------------------------
 bool PSS::doInit()
 {
+  // Create time integrator if not already created
+  if (!analysisManager_.getWorkingIntegrationMethod().isTimeIntegrationMethodCreated())
+  {
+    analysisManager_.createTimeIntegratorMethod(tiaParams_, TimeIntg::methodsEnum::ONESTEP);
+  }
+
+  // Initialize time integrator
+  TimeIntg::DataStore &ds = *(analysisManager_.getDataStore());
+  analysisManager_.getStepErrorControl().initialTime = 0.0;
+  analysisManager_.getStepErrorControl().currentTime = 0.0;
+  analysisManager_.getStepErrorControl().nextTime = 0.0;
+  analysisManager_.getStepErrorControl().currentTimeStep = period_ / 100.0; // Initial step size
+  analysisManager_.getStepErrorControl().minTimeStep = period_ / 1e6; // Very small min step
+  analysisManager_.getStepErrorControl().maxTimeStep = period_ / 10.0; // Reasonable max step
+  analysisManager_.getStepErrorControl().finalTime = period_;
+  
+  // Initialize time integrator
+  analysisManager_.getWorkingIntegrationMethod().initialize(tiaParams_);
+  
   return true;
 }
 
@@ -228,7 +251,7 @@ bool PSS::doRun()
 
 //-----------------------------------------------------------------------------
 // Function      : PSS::doLoopProcess
-// Purpose       : Main analysis loop
+// Purpose       : Main analysis loop - implements shooting method
 // Special Notes :
 // Scope         : protected
 // Creator       : 
@@ -236,9 +259,188 @@ bool PSS::doRun()
 //-----------------------------------------------------------------------------
 bool PSS::doLoopProcess()
 {
-  // TODO: Implement shooting method integration with Xyce
-  // For now, just return success
+  bool bsuccess = true;
+  
+  TimeIntg::DataStore &ds = *(analysisManager_.getDataStore());
+  TimeIntg::StepErrorControl &sec = analysisManager_.getStepErrorControl();
+  
+  // Save initial conditions (x(0))
+  Linear::Vector *x0_sol = ds.builder_.createVector();
+  Linear::Vector *x0_state = ds.builder_.createStateVector();
+  Linear::Vector *x0_store = ds.builder_.createStoreVector();
+  
+  x0_sol->putScalar(0.0);
+  x0_state->putScalar(0.0);
+  x0_store->putScalar(0.0);
+  
+  // Newton iteration loop
+  for (int iter = 0; iter < maxIterations_; ++iter)
+  {
+    // Save current initial condition
+    x0_sol->update(1.0, *(ds.currSolutionPtr), 0.0);
+    if (ds.stateSize > 0)
+      x0_state->update(1.0, *(ds.currStatePtr), 0.0);
+    if (ds.storeSize > 0)
+      x0_store->update(1.0, *(ds.currStorePtr), 0.0);
+    
+    // Integrate from t=0 to t=T
+    bool integrateSuccess = integrateOnePeriod();
+    
+    if (!integrateSuccess)
+    {
+      Report::UserWarning0() << "PSS: Integration failed at iteration " << iter;
+      bsuccess = false;
+      break;
+    }
+    
+    // Compute residual: r = x(T) - x(0)
+    Linear::Vector *residual = ds.builder_.createVector();
+    residual->update(1.0, *(ds.nextSolutionPtr), -1.0, *x0_sol, 0.0);
+    
+    // Compute residual norm
+    double residualNorm = residual->normInf();
+    
+    if (residualNorm < tolerance_)
+    {
+      // Converged! Update solution arrays
+      ds.updateSolDataArrays();
+      if (ds.stateSize > 0)
+      {
+        Linear::Vector *tmp = ds.lastStatePtr;
+        ds.lastStatePtr = ds.currStatePtr;
+        ds.currStatePtr = ds.nextStatePtr;
+        ds.nextStatePtr = tmp;
+      }
+      if (ds.storeSize > 0)
+      {
+        Linear::Vector *tmp = ds.lastStorePtr;
+        ds.lastStorePtr = ds.currStorePtr;
+        ds.currStorePtr = ds.nextStorePtr;
+        ds.nextStorePtr = tmp;
+      }
+      
+      Report::UserInfo0() << "PSS: Converged in " << iter + 1 << " iterations, residual = " << residualNorm;
+      delete residual;
+      break;
+    }
+    
+    if (iter == maxIterations_ - 1)
+    {
+      Report::UserWarning0() << "PSS: Did not converge after " << maxIterations_ << " iterations, residual = " << residualNorm;
+      delete residual;
+      bsuccess = false;
+      break;
+    }
+    
+    // Compute Jacobian and solve for update
+    // For now, use simple finite difference
+    // TODO: Use Xyce's linear solver for better performance
+    Linear::Vector *update = computeNewtonUpdate(residual, x0_sol);
+    
+    // Update initial condition: x(0) = x(0) + delta
+    ds.currSolutionPtr->update(1.0, *update, 1.0);
+    
+    // Reset time to 0 for next iteration
+    sec.currentTime = 0.0;
+    sec.nextTime = 0.0;
+    analysisManager_.getWorkingIntegrationMethod().initialize(tiaParams_);
+    
+    delete residual;
+    delete update;
+  }
+  
+  delete x0_sol;
+  delete x0_state;
+  delete x0_store;
+  
+  return bsuccess;
+}
+
+//-----------------------------------------------------------------------------
+// Function      : PSS::integrateOnePeriod
+// Purpose       : Integrate from t=0 to t=T (one period)
+// Special Notes :
+// Scope         : private
+// Creator       : 
+// Creation Date : 
+//-----------------------------------------------------------------------------
+bool PSS::integrateOnePeriod()
+{
+  TimeIntg::DataStore &ds = *(analysisManager_.getDataStore());
+  TimeIntg::StepErrorControl &sec = analysisManager_.getStepErrorControl();
+  
+  // Reset time
+  sec.initialTime = 0.0;
+  sec.currentTime = 0.0;
+  sec.nextTime = 0.0;
+  sec.finalTime = period_;
+  
+  // Integration loop
+  while (sec.currentTime < period_ - 1e-12)
+  {
+    // Update next time
+    sec.nextTime = std::min(sec.currentTime + sec.currentTimeStep, period_);
+    
+    // Take integration step
+    doHandlePredictor();
+    loader_.updateSources();
+    
+    // Nonlinear solve
+    sec.newtonConvergenceStatus = nonlinearManager_.solve();
+    
+    if (sec.newtonConvergenceStatus <= 0)
+    {
+      // Step failed
+      return false;
+    }
+    
+    // Complete step
+    analysisManager_.getWorkingIntegrationMethod().updateLeadCurrent();
+    analysisManager_.getWorkingIntegrationMethod().stepLinearCombo();
+    sec.evaluateStepError(loader_, tiaParams_);
+    
+    if (!sec.stepAttemptStatus)
+    {
+      // Step rejected
+      analysisManager_.getWorkingIntegrationMethod().rejectStep(tiaParams_);
+      continue;
+    }
+    
+    // Step accepted
+    analysisManager_.getWorkingIntegrationMethod().completeStep(tiaParams_);
+    ds.updateSolDataArrays();
+    
+    // Update time
+    sec.currentTime = sec.nextTime;
+    sec.updateTimeStep(tiaParams_);
+    
+    // Update coefficients for next step
+    analysisManager_.getWorkingIntegrationMethod().updateCoeffs();
+  }
+  
   return true;
+}
+
+//-----------------------------------------------------------------------------
+// Function      : PSS::computeNewtonUpdate
+// Purpose       : Compute Newton update using finite difference Jacobian
+// Special Notes : Simple implementation - can be optimized later
+// Scope         : private
+// Creator       : 
+// Creation Date : 
+//-----------------------------------------------------------------------------
+Linear::Vector *PSS::computeNewtonUpdate(Linear::Vector *residual, Linear::Vector *x0)
+{
+  // Simple damped Newton: delta = -alpha * residual
+  // where alpha is a damping factor
+  // TODO: Implement full Jacobian computation and linear solve
+  
+  TimeIntg::DataStore &ds = *(analysisManager_.getDataStore());
+  Linear::Vector *update = ds.builder_.createVector();
+  double alpha = 0.1; // Damping factor
+  update->update(-alpha, *residual, 0.0);
+  
+  return update;
 }
 
 //-----------------------------------------------------------------------------
@@ -290,6 +492,7 @@ bool PSS::doFinish()
 //-----------------------------------------------------------------------------
 bool PSS::doHandlePredictor()
 {
+  analysisManager_.getWorkingIntegrationMethod().obtainPredictor();
   return true;
 }
 
