@@ -27,16 +27,13 @@
 // These tests use std::vector<double> to test the core algorithms,
 // making them true unit tests that don't depend on Xyce infrastructure.
 
-#include "Xyce_config.h"
 #include <gtest/gtest.h>
-#include <N_UTL_Math.h>
 #include <cmath>
 #include <vector>
 #include <algorithm>
 
 namespace
 {
-  using namespace Xyce;
 
   //-------------------------------------------------------------------------
   // Test Fixture for PSS Component Tests
