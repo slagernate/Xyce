@@ -10,4 +10,5 @@ if(Xyce_GTEST_UNIT_TESTS)
 
   add_subdirectory(IOInterfacePKG)
   add_subdirectory(UtilityPKG)
+  add_subdirectory(AnalysisPKG/PSS)
 endif()
