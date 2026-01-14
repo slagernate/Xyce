@@ -294,11 +294,34 @@ bool PSS::doLoopProcess()
     }
     
     // Compute residual: r = x(T) - x(0)
+    // Include solution, state, and store vectors
     Linear::Vector *residual = ds.builder_.createVector();
     residual->update(1.0, *(ds.nextSolutionPtr), -1.0, *x0_sol, 0.0);
     
-    // Compute residual norm
+    // Also check state and store vectors for periodicity
+    double stateResidualNorm = 0.0;
+    double storeResidualNorm = 0.0;
+    
+    if (ds.stateSize > 0)
+    {
+      Linear::Vector *stateResidual = ds.builder_.createStateVector();
+      stateResidual->update(1.0, *(ds.nextStatePtr), -1.0, *x0_state, 0.0);
+      stateResidualNorm = stateResidual->normInf();
+      delete stateResidual;
+    }
+    
+    if (ds.storeSize > 0)
+    {
+      Linear::Vector *storeResidual = ds.builder_.createStoreVector();
+      storeResidual->update(1.0, *(ds.nextStorePtr), -1.0, *x0_store, 0.0);
+      storeResidualNorm = storeResidual->normInf();
+      delete storeResidual;
+    }
+    
+    // Compute overall residual norm (max of all components)
     double residualNorm = residual->normInf();
+    residualNorm = std::max(residualNorm, stateResidualNorm);
+    residualNorm = std::max(residualNorm, storeResidualNorm);
     
     if (residualNorm < tolerance_)
     {
@@ -339,6 +362,19 @@ bool PSS::doLoopProcess()
     
     // Update initial condition: x(0) = x(0) + delta
     ds.currSolutionPtr->update(1.0, *update, 1.0);
+    
+    // Also update state and store vectors if needed
+    // For now, use same update strategy (can be refined)
+    if (ds.stateSize > 0)
+    {
+      // Simple: restore from saved x0_state, will be updated by integration
+      ds.currStatePtr->update(1.0, *x0_state, 0.0);
+    }
+    if (ds.storeSize > 0)
+    {
+      // Simple: restore from saved x0_store, will be updated by integration
+      ds.currStorePtr->update(1.0, *x0_store, 0.0);
+    }
     
     // Reset time to 0 for next iteration
     sec.currentTime = 0.0;
