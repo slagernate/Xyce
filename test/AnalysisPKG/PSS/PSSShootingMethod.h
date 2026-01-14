@@ -144,8 +144,13 @@ private:
     double period,
     std::vector<std::vector<double> >& jacobian);
   
-  // Newton iteration step
+  // Newton iteration step (driven mode)
   bool newtonStep(
+    SimpleODE& ode,
+    std::vector<double>& x0);
+  
+  // Newton iteration step (autonomous mode)
+  bool newtonStepAutonomous(
     SimpleODE& ode,
     std::vector<double>& x0);
   

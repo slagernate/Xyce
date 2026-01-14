@@ -147,9 +147,28 @@ PSSShootingMethod::Result PSSShootingMethod::solve(
       }
     } else {
       // Autonomous mode: solve [x(T) - x(0), phase] = 0
-      // This is more complex and will be implemented later
-      // For now, just return not converged
-      break;
+      // Extended system: [x(0), T] are unknowns
+      if (!newtonStepAutonomous(ode, x0)) {
+        break;
+      }
+      
+      // Check convergence
+      std::vector<double> residual(dim);
+      computeResidual(ode, x0, residual);
+      double phase = computePhaseCondition(ode, x0);
+      
+      // Combined residual norm: ||[x(T)-x(0), phase]||
+      lastResult_.residualNorm = 0.0;
+      for (int i = 0; i < dim; ++i) {
+        lastResult_.residualNorm += residual[i] * residual[i];
+      }
+      lastResult_.residualNorm += phase * phase;
+      lastResult_.residualNorm = std::sqrt(lastResult_.residualNorm);
+      
+      if (lastResult_.residualNorm < params_.tolerance) {
+        lastResult_.converged = true;
+        break;
+      }
     }
   }
   
@@ -220,12 +239,48 @@ void PSSShootingMethod::computeJacobianAutonomous(
   double period,
   std::vector<std::vector<double> >& jacobian)
 {
-  // For autonomous mode, Jacobian includes derivatives w.r.t. period
-  // This will be implemented later
-  (void)ode;
-  (void)x0;
-  (void)period;
-  (void)jacobian;
+  // For autonomous mode, Jacobian is (dim+1) x (dim+1)
+  // Rows: [x(T)-x(0), phase]
+  // Cols: [x(0), T]
+  int dim = ode.dimension();
+  jacobian.resize(dim + 1);
+  for (int i = 0; i < dim + 1; ++i) {
+    jacobian[i].resize(dim + 1);
+  }
+  
+  // Compute base residual and phase
+  std::vector<double> residual0(dim);
+  computeResidual(ode, x0, residual0);
+  double phase0 = computePhaseCondition(ode, x0);
+  
+  // Compute dF/dx(0) via finite difference
+  std::vector<double> xPert = x0;
+  for (int j = 0; j < dim; ++j) {
+    xPert[j] += fdStepSize_;
+    std::vector<double> residualPert(dim);
+    computeResidual(ode, xPert, residualPert);
+    double phasePert = computePhaseCondition(ode, xPert);
+    
+    for (int i = 0; i < dim; ++i) {
+      jacobian[i][j] = (residualPert[i] - residual0[i]) / fdStepSize_;
+    }
+    jacobian[dim][j] = (phasePert - phase0) / fdStepSize_;
+    
+    xPert[j] = x0[j];  // Reset
+  }
+  
+  // Compute dF/dT via finite difference
+  double periodPert = period + fdStepSize_;
+  params_.period = periodPert;
+  std::vector<double> residualPert(dim);
+  computeResidual(ode, x0, residualPert);
+  double phasePert = computePhaseCondition(ode, x0);
+  params_.period = period;  // Reset
+  
+  for (int i = 0; i < dim; ++i) {
+    jacobian[i][dim] = (residualPert[i] - residual0[i]) / fdStepSize_;
+  }
+  jacobian[dim][dim] = (phasePert - phase0) / fdStepSize_;
 }
 
 bool PSSShootingMethod::newtonStep(
@@ -295,6 +350,81 @@ bool PSSShootingMethod::newtonStep(
   for (int i = 0; i < dim; ++i) {
     x0[i] += delta[i];
   }
+  
+  return true;
+}
+
+bool PSSShootingMethod::newtonStepAutonomous(
+  SimpleODE& ode,
+  std::vector<double>& x0)
+{
+  int dim = ode.dimension();
+  
+  // Compute residual: [x(T) - x(0), phase]
+  std::vector<double> residual(dim);
+  computeResidual(ode, x0, residual);
+  double phase = computePhaseCondition(ode, x0);
+  
+  // Compute Jacobian: (dim+1) x (dim+1)
+  std::vector<std::vector<double> > jacobian;
+  computeJacobianAutonomous(ode, x0, params_.period, jacobian);
+  
+  // Solve J * [delta_x, delta_T] = -[residual, phase]
+  // Create augmented matrix [J | -r]
+  std::vector<std::vector<double> > aug(dim + 1);
+  for (int i = 0; i < dim + 1; ++i) {
+    aug[i].resize(dim + 2);
+    for (int j = 0; j < dim + 1; ++j) {
+      aug[i][j] = jacobian[i][j];
+    }
+    if (i < dim) {
+      aug[i][dim + 1] = -residual[i];
+    } else {
+      aug[i][dim + 1] = -phase;
+    }
+  }
+  
+  // Gaussian elimination
+  for (int i = 0; i < dim + 1; ++i) {
+    // Find pivot
+    int pivot = i;
+    for (int k = i + 1; k < dim + 1; ++k) {
+      if (std::abs(aug[k][i]) > std::abs(aug[pivot][i])) {
+        pivot = k;
+      }
+    }
+    std::swap(aug[i], aug[pivot]);
+    
+    // Eliminate
+    double pivotVal = aug[i][i];
+    if (std::abs(pivotVal) < 1e-12) {
+      return false;  // Singular matrix
+    }
+    
+    for (int k = i + 1; k < dim + 1; ++k) {
+      double factor = aug[k][i] / pivotVal;
+      for (int j = i; j < dim + 2; ++j) {
+        aug[k][j] -= factor * aug[i][j];
+      }
+    }
+  }
+  
+  // Back substitution
+  std::vector<double> delta(dim + 1);
+  for (int i = dim; i >= 0; --i) {
+    delta[i] = aug[i][dim + 1];
+    for (int j = i + 1; j < dim + 1; ++j) {
+      delta[i] -= aug[i][j] * delta[j];
+    }
+    delta[i] /= aug[i][i];
+  }
+  
+  // Update: x0 = x0 + delta_x, T = T + delta_T
+  for (int i = 0; i < dim; ++i) {
+    x0[i] += delta[i];
+  }
+  params_.period += delta[dim];
+  lastResult_.period = params_.period;
   
   return true;
 }

@@ -45,6 +45,7 @@
 #include <N_ANP_EmbeddedSampling.h>
 #include <N_ANP_PCE.h>
 #include <N_ANP_Transient.h>
+#include <N_ANP_PSS.h>
 
 namespace Xyce {
 namespace Analysis {
@@ -86,6 +87,7 @@ void registerAnalysisFactory(
   registerMPDEFactory(factory_block);
   registerNOISEFactory(factory_block);
   registerMORFactory(factory_block);
+  registerPSSFactory(factory_block);
   registerStepFactory(factory_block);
   registerSamplingFactory(factory_block);
   registerEmbeddedSamplingFactory(factory_block);

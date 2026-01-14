@@ -53,7 +53,7 @@ static const char *dasho_print_extensions_regex[] =
    "(\\.s[0-9]+p)"};       // .LIN analysis (Touchstone2 output file)
 
 namespace PrintType {
-  enum PrintType {NONE, DC, TRAN, AC, AC_IC, HB, HB_TD, HB_FD, HB_IC, HB_STARTUP, HOMOTOPY, MPDE, MPDE_IC, MPDE_STARTUP, RAW_OVERRIDE, SENS, TRANADJOINT, NOISE, SPARAM, ES, PCE};
+  enum PrintType {NONE, DC, TRAN, AC, AC_IC, HB, HB_TD, HB_FD, HB_IC, HB_STARTUP, HOMOTOPY, MPDE, MPDE_IC, MPDE_STARTUP, RAW_OVERRIDE, SENS, TRANADJOINT, NOISE, SPARAM, ES, PCE, PSS, PSS_IC};
 }
 
 } // namespace IO

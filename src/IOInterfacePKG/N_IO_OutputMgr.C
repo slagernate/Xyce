@@ -65,6 +65,7 @@
 #include <N_IO_OutputterHB.h>
 #include <N_IO_OutputterMPDE.h>
 #include <N_IO_OutputterTransient.h>
+#include <N_IO_OutputterPSS.h>
 #include <N_IO_OutputterSensitivity.h>
 #include <N_IO_OutputterRawOverride.h>
 #include <N_IO_ParsingHelpers.h>
@@ -670,6 +671,11 @@ void OutputMgr::earlyPrepareOutput(
           Outputter::enableNoiseOutput(comm, *this, analysis_mode);
         break;
 
+      case Analysis::ANP_MODE_PSS:
+        if (!testAndSet(enabledAnalysisSet_, Analysis::ANP_MODE_PSS))
+          Outputter::enablePSSOutput(comm, *this, analysis_mode);
+        break;
+
       default:
         // no op, since not all analysis types use the OutputMgr for output
         break;
@@ -842,6 +848,11 @@ void OutputMgr::prepareOutput(
 
       case Analysis::ANP_MODE_NOISE:
         addActiveOutputter(PrintType::NOISE, analysis_mode);
+        break;
+
+      case Analysis::ANP_MODE_PSS:
+        addActiveOutputter(PrintType::PSS, analysis_mode);
+        addActiveOutputter(PrintType::PSS_IC, analysis_mode);
         break;
 
       default:
@@ -1477,6 +1488,10 @@ bool OutputMgr::parsePRINTBlock(const Util::OptionBlock & print_block)
         print_type = PrintType::TRAN;
       else if (s == "NOISE")
         print_type = PrintType::NOISE;
+      else if (s == "PSS")
+        print_type = PrintType::PSS;
+      else if (s == "PSS_IC")
+        print_type = PrintType::PSS_IC;
       else if (s == "ROL")
         print_type = PrintType::DC; // TT
       else
@@ -2176,6 +2191,27 @@ bool OutputMgr::parsePRINTBlock(const Util::OptionBlock & print_block)
         print_parameters.printStepNumColumn_ = true;
     }
     addOutputPrintParameters(OutputType::TRAN, print_parameters);
+  }
+  else if (print_type == PrintType::PSS)
+  {
+    if ( (print_parameters.format_ == Format::TS1) ||
+         (print_parameters.format_ == Format::TS2) )
+    {
+      // print out the Index column, since this will be in STD format
+      print_parameters.printIndexColumn_ = true;
+      if (printStepNumCol_)
+        print_parameters.printStepNumColumn_ = true;
+    }
+    addOutputPrintParameters(OutputType::PSS, print_parameters);
+  }
+  else if (print_type == PrintType::PSS_IC)
+  {
+    PrintParameters pss_ic_print_parameters = print_parameters;
+    if (pss_ic_print_parameters.format_ == Format::STD)
+    {
+      pss_ic_print_parameters.defaultExtension_ = ".prn";
+    }
+    addOutputPrintParameters(OutputType::PSS_IC, pss_ic_print_parameters);
   }
   else if (print_type == PrintType::DC)
   {

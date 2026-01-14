@@ -59,6 +59,7 @@ target_sources(XyceLib PRIVATE
       N_IO_OutputterPCECSV.C
       N_IO_OutputterPCEPrn.C
       N_IO_OutputterPCETecplot.C
+      N_IO_OutputterPSS.C
       N_IO_OutputterSensitivityPrn.C
       N_IO_OutputterSensitivityCSV.C
       N_IO_OutputterSensitivityTecplot.C
@@ -84,6 +85,7 @@ target_sources(XyceLib PRIVATE
       N_IO_OutputterRawOverride.C
       N_IO_OutputterNoise.C
       N_IO_OutputterPCE.C
+      N_IO_OutputterPSS.C
       N_IO_OutputterSensitivity.C
       N_IO_OutputterSParam.C
       N_IO_OutputterTransient.C

@@ -56,7 +56,8 @@ enum Mode
   ANP_MODE_AC,
   ANP_MODE_NOISE,
   ANP_MODE_MOR,
-  ANP_MODE_ROL
+  ANP_MODE_ROL,
+  ANP_MODE_PSS
 };
 
 enum DCOPType {
@@ -86,6 +87,7 @@ class Step;
 class Sampling;
 class SweepParam;
 class Transient;
+class PSS;
 
 class ACExpressionGroup;
 
