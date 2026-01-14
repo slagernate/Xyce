@@ -21,7 +21,7 @@
 #-------------------------------------------------------------------------
 
 if(GTest_FOUND)
-  # PSS Shooting Method Unit Tests
+  # PSS Shooting Method Unit Tests (Phase 0)
   add_executable(PSS_ShootingMethod_UnitTests
     N_ANP_PSSShooting_UnitTest.C
     PSSShootingMethod.C
@@ -40,6 +40,29 @@ if(GTest_FOUND)
     PSS_ShootingMethod_UnitTests
     TEST_PREFIX PSS_ShootingMethod:
     PROPERTIES "LABELS;nightly;LABELS;unittest;LABELS;pss"
+  )
+
+  # PSS Integration Tests (Phase 2)
+  # Note: These require full Xyce infrastructure and are currently placeholders
+  add_executable(PSS_Integration_UnitTests
+    N_ANP_PSSIntegration_UnitTest.C
+  )
+  
+  target_link_libraries(PSS_Integration_UnitTests PUBLIC 
+    GTest::gtest
+    XyceLib
+  )
+  
+  target_include_directories(PSS_Integration_UnitTests 
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+    PUBLIC $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>/src
+  )
+  
+  # Wrap the GTest tests with CTest
+  gtest_discover_tests(
+    PSS_Integration_UnitTests
+    TEST_PREFIX PSS_Integration:
+    PROPERTIES "LABELS;nightly;LABELS;unittest;LABELS;pss;LABELS;integration"
   )
 endif()
 
