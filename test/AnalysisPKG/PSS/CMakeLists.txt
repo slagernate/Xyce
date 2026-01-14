@@ -59,15 +59,10 @@ if(GTest_FOUND)
   )
   
   # Copy test netlists to build directory so tests can find them
-  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/TestNetlist_RC.cir 
-                 ${CMAKE_CURRENT_BINARY_DIR}/TestNetlist_RC.cir COPYONLY)
-  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/TestNetlist_RLC.cir 
-                 ${CMAKE_CURRENT_BINARY_DIR}/TestNetlist_RLC.cir COPYONLY)
-  
-  # Set working directory for tests to find netlists
-  set_tests_properties(PSS_Integration_UnitTests PROPERTIES
-    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-  )
+  file(COPY
+    ${CMAKE_CURRENT_SOURCE_DIR}/TestNetlist_RC.cir
+    ${CMAKE_CURRENT_SOURCE_DIR}/TestNetlist_RLC.cir
+    DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
   
   # Wrap the GTest tests with CTest
   gtest_discover_tests(
