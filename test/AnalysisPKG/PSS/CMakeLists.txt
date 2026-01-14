@@ -42,6 +42,29 @@ if(GTest_FOUND)
     PROPERTIES "LABELS;nightly;LABELS;unittest;LABELS;pss"
   )
 
+  # PSS Component Unit Tests (Phase 2 - Component Level)
+  # These test individual components without requiring full Xyce infrastructure
+  add_executable(PSS_Component_UnitTests
+    N_ANP_PSSComponent_UnitTest.C
+  )
+  
+  target_link_libraries(PSS_Component_UnitTests PUBLIC 
+    GTest::gtest
+    XyceLib
+  )
+  
+  target_include_directories(PSS_Component_UnitTests 
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+    PUBLIC $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>/src
+  )
+  
+  # Wrap the GTest tests with CTest
+  gtest_discover_tests(
+    PSS_Component_UnitTests
+    TEST_PREFIX PSS_Component:
+    PROPERTIES "LABELS;nightly;LABELS;unittest;LABELS;pss;LABELS;component"
+  )
+
   # PSS Integration Tests (Phase 2)
   # These tests use the full Xyce infrastructure via Simulator API
   add_executable(PSS_Integration_UnitTests
