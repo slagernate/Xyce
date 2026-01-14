@@ -25,6 +25,13 @@
 #include "SimpleODETest.h"
 #include <vector>
 #include <cmath>
+#include <memory>
+
+// C++11 compatibility: make_unique
+template<typename T, typename... Args>
+std::unique_ptr<T> make_unique(Args&&... args) {
+  return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
+}
 
 namespace
 {
@@ -53,7 +60,7 @@ namespace
     double period = 1.0;
     DrivenSimpleODE ode(period);
     
-    auto integrator = std::make_unique<EulerIntegrator>(1000);
+    auto integrator = make_unique<EulerIntegrator>(1000);
     PSSShootingMethod shooting(std::move(integrator));
     
     PSSShootingMethod::Parameters params;
@@ -91,7 +98,7 @@ namespace
     double period = 1.0;
     DrivenSimpleODE ode(period);
     
-    auto integrator = std::make_unique<RK4Integrator>(500);
+    auto integrator = make_unique<RK4Integrator>(500);
     PSSShootingMethod shooting(std::move(integrator));
     
     PSSShootingMethod::Parameters params;
@@ -153,7 +160,7 @@ namespace
     double period = 1.0;
     DrivenSimpleODE ode(period);
     
-    auto integrator = std::make_unique<RK4Integrator>(500);
+    auto integrator = make_unique<RK4Integrator>(500);
     PSSShootingMethod shooting(std::move(integrator));
     
     PSSShootingMethod::Parameters params;
@@ -192,7 +199,7 @@ namespace
     double period = 1.0;
     DrivenSimpleODE ode(period);
     
-    auto integrator = std::make_unique<RK4Integrator>(500);
+    auto integrator = make_unique<RK4Integrator>(500);
     PSSShootingMethod shooting(std::move(integrator));
     
     PSSShootingMethod::Parameters params;
@@ -221,7 +228,7 @@ namespace
     std::vector<double> tolerances = {1e-4, 1e-5, 1e-6};
     
     for (double tol : tolerances) {
-      auto integrator = std::make_unique<RK4Integrator>(500);
+      auto integrator = make_unique<RK4Integrator>(500);
       PSSShootingMethod shooting(std::move(integrator));
       
       PSSShootingMethod::Parameters params;
@@ -248,7 +255,7 @@ namespace
   {
     VanDerPolODE ode(1.0);
     
-    auto integrator = std::make_unique<RK4Integrator>(500);
+    auto integrator = make_unique<RK4Integrator>(500);
     PSSShootingMethod shooting(std::move(integrator));
     
     PSSShootingMethod::Parameters params;
