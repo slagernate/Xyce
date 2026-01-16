@@ -174,6 +174,9 @@ private:
   bool                  matrixFree_;
   int                   gmresRestart_;
   int                   gmresMaxIter_;
+  bool                  gmresLog_;
+  bool                  gmresPrecondDiag_;
+  int                   gmresPrecondMaxN_;
 
   std::vector<AnalysisBase *> parentAnalysisPtrVec_;
 };

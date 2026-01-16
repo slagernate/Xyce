@@ -124,7 +124,10 @@ PSS::PSS(
     startUpPeriodsGiven_(false),
     matrixFree_(false),
     gmresRestart_(20),
-    gmresMaxIter_(20)
+    gmresMaxIter_(20),
+    gmresLog_(false),
+    gmresPrecondDiag_(false),
+    gmresPrecondMaxN_(200)
 {
 }
 
@@ -231,6 +234,21 @@ bool PSS::setAnalysisParams(const Util::OptionBlock & paramsBlock)
     else if (tag == "GMRESMAXITER")
     {
       gmresMaxIter_ = (*it).getImmutableValue<int>();
+    }
+    else if (tag == "GMRESLOG")
+    {
+      gmresLog_ = static_cast<bool>((*it).getImmutableValue<bool>());
+    }
+    else if (tag == "GMRESPRECOND")
+    {
+      std::string precond = (*it).stringValue();
+      ExtendedString precondUpper(precond);
+      precondUpper.toUpper();
+      gmresPrecondDiag_ = (precondUpper == "DIAG");
+    }
+    else if (tag == "GMRESPRECONDMAX")
+    {
+      gmresPrecondMaxN_ = (*it).getImmutableValue<int>();
     }
   }
   
@@ -1104,8 +1122,48 @@ bool PSS::solveNewtonSystemMatrixFree(Linear::Vector *x0, Linear::Vector *residu
     return true;
   }
 
+  const Parallel::ParMap *map = residual->pmap();
+  const int base = map->indexBase();
+
   Linear::Vector *b = ds.builder_.createVector();
   b->update(-1.0, *residual, 0.0);
+
+  Linear::Vector *diagInv = nullptr;
+  if (gmresPrecondDiag_ && n <= gmresPrecondMaxN_)
+  {
+    diagInv = ds.builder_.createVector();
+    diagInv->putScalar(1.0);
+
+    for (int lid = 0; lid < map->numLocalEntities(); ++lid)
+    {
+      int gid = map->localToGlobalIndex(lid);
+      double xj = x0->getElementByGlobalIndex(gid);
+      double dx = computePerturbation(xj);
+
+      Linear::Vector *xPert = ds.builder_.createVector();
+      xPert->update(1.0, *x0, 0.0);
+      xPert->setElementByGlobalIndex(gid, xj + dx);
+
+      Linear::Vector *rPert = computeResidualVector(xPert, period_);
+      double diag = (rPert->getElementByGlobalIndex(gid) - residual->getElementByGlobalIndex(gid)) / dx;
+      if (std::fabs(diag) < 1.0e-14)
+        diag = 1.0;
+
+      diagInv->setElementByGlobalIndex(gid, 1.0 / diag);
+
+      delete rPert;
+      delete xPert;
+    }
+
+    // Scale rhs: b = M^-1 b
+    for (int lid = 0; lid < map->numLocalEntities(); ++lid)
+    {
+      int gid = map->localToGlobalIndex(lid);
+      double val = b->getElementByGlobalIndex(gid);
+      double scale = diagInv->getElementByGlobalIndex(gid);
+      b->setElementByGlobalIndex(gid, val * scale);
+    }
+  }
   double beta = std::sqrt(b->dotProduct(*b));
   if (beta == 0.0)
   {
@@ -1143,6 +1201,17 @@ bool PSS::solveNewtonSystemMatrixFree(Linear::Vector *x0, Linear::Vector *residu
 
     delete rPert;
     delete xPert;
+
+    if (diagInv)
+    {
+      for (int lid = 0; lid < map->numLocalEntities(); ++lid)
+      {
+        int gid = map->localToGlobalIndex(lid);
+        double val = out->getElementByGlobalIndex(gid);
+        double scale = diagInv->getElementByGlobalIndex(gid);
+        out->setElementByGlobalIndex(gid, val * scale);
+      }
+    }
   };
 
   int iterCount = 0;
@@ -1224,8 +1293,15 @@ bool PSS::solveNewtonSystemMatrixFree(Linear::Vector *x0, Linear::Vector *residu
 
   delete w;
   delete b;
+  delete diagInv;
   for (Linear::Vector *vec : v)
     delete vec;
+
+  if (gmresLog_)
+  {
+    double finalRes = (lastDim < static_cast<int>(g.size())) ? std::fabs(g[lastDim]) : 0.0;
+    Report::UserInfo0() << "PSS: GMRES iterations=" << lastDim << " residual=" << finalRes;
+  }
 
   return converged;
 }
@@ -1246,8 +1322,48 @@ bool PSS::solveNewtonSystemMatrixFreeAutonomous(Linear::Vector *x0, Linear::Vect
     return true;
   }
 
+  const Parallel::ParMap *map = residual->pmap();
+
   Linear::Vector *bX = ds.builder_.createVector();
   bX->update(-1.0, *residual, 0.0);
+
+  Linear::Vector *diagInv = nullptr;
+  if (gmresPrecondDiag_ && (n + 1) <= gmresPrecondMaxN_)
+  {
+    diagInv = ds.builder_.createVector();
+    diagInv->putScalar(1.0);
+
+    for (int lid = 0; lid < map->numLocalEntities(); ++lid)
+    {
+      int gid = map->localToGlobalIndex(lid);
+      double xj = x0->getElementByGlobalIndex(gid);
+      double dx = computePerturbation(xj);
+
+      Linear::Vector *xPert = ds.builder_.createVector();
+      xPert->update(1.0, *x0, 0.0);
+      xPert->setElementByGlobalIndex(gid, xj + dx);
+      Linear::Vector *rPert = computeResidualVector(xPert, period);
+
+      double diag = (rPert->getElementByGlobalIndex(gid) - residual->getElementByGlobalIndex(gid)) / dx;
+      if (std::fabs(diag) < 1.0e-14)
+        diag = 1.0;
+
+      diagInv->setElementByGlobalIndex(gid, 1.0 / diag);
+
+      delete rPert;
+      delete xPert;
+    }
+
+    for (int lid = 0; lid < map->numLocalEntities(); ++lid)
+    {
+      int gid = map->localToGlobalIndex(lid);
+      double val = bX->getElementByGlobalIndex(gid);
+      double scale = diagInv->getElementByGlobalIndex(gid);
+      bX->setElementByGlobalIndex(gid, val * scale);
+    }
+
+    phaseCondition *= 1.0; // no scaling on phase row
+  }
   double beta = std::sqrt(bX->dotProduct(*bX) + phaseCondition * phaseCondition);
   if (beta == 0.0)
   {
@@ -1293,6 +1409,17 @@ bool PSS::solveNewtonSystemMatrixFreeAutonomous(Linear::Vector *x0, Linear::Vect
 
     delete rPert;
     delete xPert;
+
+    if (diagInv)
+    {
+      for (int lid = 0; lid < map->numLocalEntities(); ++lid)
+      {
+        int gid = map->localToGlobalIndex(lid);
+        double val = outX->getElementByGlobalIndex(gid);
+        double scale = diagInv->getElementByGlobalIndex(gid);
+        outX->setElementByGlobalIndex(gid, val * scale);
+      }
+    }
   };
 
   int iterCount = 0;
@@ -1385,8 +1512,15 @@ bool PSS::solveNewtonSystemMatrixFreeAutonomous(Linear::Vector *x0, Linear::Vect
 
   delete wX;
   delete bX;
+  delete diagInv;
   for (Linear::Vector *vec : vX)
     delete vec;
+
+  if (gmresLog_)
+  {
+    double finalRes = (lastDim < static_cast<int>(g.size())) ? std::fabs(g[lastDim]) : 0.0;
+    Report::UserInfo0() << "PSS: GMRES(auto) iterations=" << lastDim << " residual=" << finalRes;
+  }
 
   return converged;
 }
@@ -1975,6 +2109,55 @@ bool extractPSSData(
         }
       }
       option_block.addParam(Util::Param("GMRESMAXITER", parsed_line[linePosition].string_));
+      ++linePosition;
+    }
+    else if (paramName == "GMRESLOG")
+    {
+      option_block.addParam(Util::Param("GMRESLOG", 1));
+      ++linePosition;
+    }
+    else if (paramName == "GMRESPRECOND")
+    {
+      ++linePosition;
+      if (linePosition >= numFields)
+      {
+        Report::UserError0().at(netlist_filename, parsed_line[0].lineNumber_)
+          << ".PSS GMRESPRECOND requires a value";
+        return false;
+      }
+      if (parsed_line[linePosition].string_ == "=")
+      {
+        ++linePosition;
+        if (linePosition >= numFields)
+        {
+          Report::UserError0().at(netlist_filename, parsed_line[0].lineNumber_)
+            << ".PSS GMRESPRECOND requires a value";
+          return false;
+        }
+      }
+      option_block.addParam(Util::Param("GMRESPRECOND", parsed_line[linePosition].string_));
+      ++linePosition;
+    }
+    else if (paramName == "GMRESPRECONDMAX")
+    {
+      ++linePosition;
+      if (linePosition >= numFields)
+      {
+        Report::UserError0().at(netlist_filename, parsed_line[0].lineNumber_)
+          << ".PSS GMRESPRECONDMAX requires a value";
+        return false;
+      }
+      if (parsed_line[linePosition].string_ == "=")
+      {
+        ++linePosition;
+        if (linePosition >= numFields)
+        {
+          Report::UserError0().at(netlist_filename, parsed_line[0].lineNumber_)
+            << ".PSS GMRESPRECONDMAX requires a value";
+          return false;
+        }
+      }
+      option_block.addParam(Util::Param("GMRESPRECONDMAX", parsed_line[linePosition].string_));
       ++linePosition;
     }
     else
