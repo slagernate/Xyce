@@ -337,6 +337,27 @@ namespace
   }
 
   //-------------------------------------------------------------------------
+  // Test 11: MPI Matrix-Free Options Parsing
+  //-------------------------------------------------------------------------
+  TEST_F(PSSIntegrationTest, MPI_MatrixFreeOptions_RC)
+  {
+    if (getMpiSizeFromEnv() < 2)
+    {
+      GTEST_SKIP() << "MPI size < 2; run with mpirun -np 2.";
+    }
+
+    Simulator* xycePtr = new Simulator();
+    ASSERT_TRUE(xycePtr != nullptr);
+
+    auto cmd = createCmdLineArgs("TestNetlist_RC_MatrixFree.cir");
+    Simulator::RunStatus status = xycePtr->initialize(cmd.argv.size(), cmd.argv.data());
+    EXPECT_NE(status, Simulator::RunStatus::ERROR)
+      << "MPI initialization should accept MATRIXFREE/GMRES options";
+
+    delete xycePtr;
+  }
+
+  //-------------------------------------------------------------------------
   // Test 7: RLC Circuit - State Vector Periodicity
   //-------------------------------------------------------------------------
   // Integration test with RLC circuit (has state variables)

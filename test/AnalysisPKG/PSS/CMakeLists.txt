@@ -81,10 +81,30 @@ if(GTest_FOUND)
     PUBLIC $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>/src
   )
   
+  # PSS Challenging Tests (Phase 3+)
+  # These tests push the limits with difficult scenarios
+  add_executable(PSS_Challenging_UnitTests
+    N_ANP_PSSChallenging_UnitTest.C
+  )
+  
+  target_link_libraries(PSS_Challenging_UnitTests PUBLIC 
+    GTest::gtest
+    XyceLib
+  )
+  
+  target_include_directories(PSS_Challenging_UnitTests 
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+    PUBLIC $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>/src
+  )
+  
   # Copy test netlists to build directory so tests can find them
   file(COPY
     ${CMAKE_CURRENT_SOURCE_DIR}/TestNetlist_RC.cir
+    ${CMAKE_CURRENT_SOURCE_DIR}/TestNetlist_RC_MatrixFree.cir
     ${CMAKE_CURRENT_SOURCE_DIR}/TestNetlist_RLC.cir
+    ${CMAKE_CURRENT_SOURCE_DIR}/TestNetlist_DiodeRectifier.cir
+    ${CMAKE_CURRENT_SOURCE_DIR}/TestNetlist_LC_Oscillator.cir
+    ${CMAKE_CURRENT_SOURCE_DIR}/TestNetlist_RingOscillator.cir
     DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
   
   # Wrap the GTest tests with CTest
@@ -92,6 +112,12 @@ if(GTest_FOUND)
     PSS_Integration_UnitTests
     TEST_PREFIX PSS_Integration:
     PROPERTIES "LABELS;nightly;LABELS;unittest;LABELS;pss;LABELS;integration"
+  )
+  
+  gtest_discover_tests(
+    PSS_Challenging_UnitTests
+    TEST_PREFIX PSS_Challenging:
+    PROPERTIES "LABELS;nightly;LABELS;unittest;LABELS;pss;LABELS;challenging"
   )
 endif()
 
