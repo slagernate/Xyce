@@ -2233,7 +2233,7 @@ bool CircuitBlock::handleAnalysis()
 {
   bool retval = true;
 
-  static const char *analysisOptions_[] = {"DC", "TRAN", "TR", "MPDE", "HB", "AC", "OP", "NOISE", "ROL"}; // TT
+  static const char *analysisOptions_[] = {"DC", "TRAN", "TR", "MPDE", "HB", "AC", "OP", "NOISE", "ROL", "PSS"}; // TT
 
   // find first analysis type in option table
   std::list<Util::OptionBlock>::const_iterator op_analysis_it
@@ -2360,7 +2360,8 @@ bool CircuitBlock::handleAnalysis()
          (aVal == "AC" && usVal == "SPARAM") ||
          (aVal == "NOISE" && usVal == "NOISE") ||
          (aVal == "MOR" && usVal == "MOR")  ||
-         (aVal == "ROL" && usVal == "DC"))) // TT
+         (aVal == "ROL" && usVal == "DC")   ||
+         (aVal == "PSS" && (usVal == "PSS" || usVal == "PSS_IC")))) // TT
     {
       // Problem, inconsistent analysis type and print type.
       Report::UserError0() << "Analysis type " << aVal << " and print type " << usVal << " are inconsistent.";
