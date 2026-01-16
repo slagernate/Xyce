@@ -175,6 +175,7 @@ private:
   int                   gmresRestart_;
   int                   gmresMaxIter_;
   bool                  gmresLog_;
+  bool                  perfLog_;
   bool                  gmresPrecondDiag_;
   int                   gmresPrecondMaxN_;
   double                gmresTol_;

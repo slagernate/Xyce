@@ -53,6 +53,7 @@
 #include <Teuchos_SerialDenseSolver.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <limits>
@@ -126,6 +127,7 @@ PSS::PSS(
     gmresRestart_(20),
     gmresMaxIter_(20),
     gmresLog_(false),
+    perfLog_(false),
     gmresPrecondDiag_(false),
     gmresPrecondMaxN_(200),
     gmresTol_(0.1)
@@ -239,6 +241,10 @@ bool PSS::setAnalysisParams(const Util::OptionBlock & paramsBlock)
     else if (tag == "GMRESLOG")
     {
       gmresLog_ = static_cast<bool>((*it).getImmutableValue<bool>());
+    }
+    else if (tag == "PERFLOG")
+    {
+      perfLog_ = static_cast<bool>((*it).getImmutableValue<bool>());
     }
     else if (tag == "GMRESTOL")
     {
@@ -1120,6 +1126,10 @@ double PSS::computePerturbation(double value) const
 bool PSS::solveNewtonSystemMatrixFree(Linear::Vector *x0, Linear::Vector *residual, Linear::Vector *update)
 {
   TimeIntg::DataStore &ds = *(analysisManager_.getDataStore());
+  const Parallel::Communicator *comm = x0 ? x0->pdsComm() : nullptr;
+  const int rank = comm ? comm->procID() : 0;
+  const auto perfStart = perfLog_ ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+  int matvecCount = 0;
   const int n = residual->globalLength();
   if (n <= 0)
   {
@@ -1196,6 +1206,7 @@ bool PSS::solveNewtonSystemMatrixFree(Linear::Vector *x0, Linear::Vector *residu
   Linear::Vector *w = ds.builder_.createVector();
 
   auto applyJacobian = [&](Linear::Vector *vec, Linear::Vector *out) {
+    ++matvecCount;
     double eps = computePerturbation(0.0);
     Linear::Vector *xPert = ds.builder_.createVector();
     xPert->update(1.0, *x0, 0.0);
@@ -1334,6 +1345,21 @@ bool PSS::solveNewtonSystemMatrixFree(Linear::Vector *x0, Linear::Vector *residu
   {
     Report::UserInfo0() << "PSS: GMRES iterations=" << totalIters << " residual=" << finalRes;
   }
+  if (perfLog_)
+  {
+    const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - perfStart).count();
+    double maxElapsed = elapsed;
+    int maxMatvec = matvecCount;
+    if (comm)
+    {
+      comm->maxAll(&elapsed, &maxElapsed, 1);
+      comm->maxAll(&matvecCount, &maxMatvec, 1);
+    }
+    if (!comm || rank == 0)
+    {
+      Report::UserInfo0() << "PSS: GMRES time=" << maxElapsed << "s matvecs=" << maxMatvec;
+    }
+  }
 
   return solveOk;
 }
@@ -1346,6 +1372,10 @@ bool PSS::solveNewtonSystemMatrixFreeAutonomous(Linear::Vector *x0, Linear::Vect
                                                 double period, Linear::Vector *update, double &periodUpdate)
 {
   TimeIntg::DataStore &ds = *(analysisManager_.getDataStore());
+  const Parallel::Communicator *comm = x0 ? x0->pdsComm() : nullptr;
+  const int rank = comm ? comm->procID() : 0;
+  const auto perfStart = perfLog_ ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+  int matvecCount = 0;
   const int n = residual->globalLength();
   if (n <= 0)
   {
@@ -1427,6 +1457,7 @@ bool PSS::solveNewtonSystemMatrixFreeAutonomous(Linear::Vector *x0, Linear::Vect
   double wT = 0.0;
 
   auto applyJacobian = [&](Linear::Vector *vecX, double vecT, Linear::Vector *outX, double &outT) {
+    ++matvecCount;
     double eps = computePerturbation(0.0);
     Linear::Vector *xPert = ds.builder_.createVector();
     xPert->update(1.0, *x0, 0.0);
@@ -1581,6 +1612,21 @@ bool PSS::solveNewtonSystemMatrixFreeAutonomous(Linear::Vector *x0, Linear::Vect
   if (gmresLog_)
   {
     Report::UserInfo0() << "PSS: GMRES(auto) iterations=" << totalIters << " residual=" << finalRes;
+  }
+  if (perfLog_)
+  {
+    const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - perfStart).count();
+    double maxElapsed = elapsed;
+    int maxMatvec = matvecCount;
+    if (comm)
+    {
+      comm->maxAll(&elapsed, &maxElapsed, 1);
+      comm->maxAll(&matvecCount, &maxMatvec, 1);
+    }
+    if (!comm || rank == 0)
+    {
+      Report::UserInfo0() << "PSS: GMRES(auto) time=" << maxElapsed << "s matvecs=" << maxMatvec;
+    }
   }
 
   return solveOk;
@@ -2197,6 +2243,11 @@ bool extractPSSData(
     else if (paramName == "GMRESLOG")
     {
       option_block.addParam(Util::Param("GMRESLOG", 1));
+      ++linePosition;
+    }
+    else if (paramName == "PERFLOG")
+    {
+      option_block.addParam(Util::Param("PERFLOG", 1));
       ++linePosition;
     }
     else if (paramName == "GMRESPRECOND")

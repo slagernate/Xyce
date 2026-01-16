@@ -72,6 +72,7 @@ run_tests "PSS_Challenging_UnitTests" \
   "PSSChallengingTest.MultipleTimeConstants_ComplexDynamics" \
   "PSSChallengingTest.LargeCircuit_ManyNodes" \
   "PSSChallengingTest.MPI_LargeCircuit_MatrixFree" \
+  "PSSChallengingTest.MPI_MixedRLC_Diode_MatrixFree" \
   "PSSChallengingTest.ExtremeParameterValues" \
   "PSSChallengingTest.ConvergenceFailure_NonPeriodicSystem" \
   "PSSChallengingTest.TightTolerance_HighAccuracy" \

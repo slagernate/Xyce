@@ -174,7 +174,7 @@ namespace
       "C1 2 0 10n\n"
       ".MODEL D1N4001 D (IS=1e-12 N=1.5 RS=0.1)\n"
       ".PSS 1u MATRIXFREE GMRESRESTART=20 GMRESMAXITER=40 GMRESTOL=0.01 "
-      "GMRESPRECOND=DIAG GMRESPRECONDMAX=200 GMRESLOG\n"
+      "GMRESPRECOND=DIAG GMRESPRECONDMAX=200 GMRESLOG PERFLOG\n"
       ".PRINT PSS V(2) I(D1)\n"
       ".END\n";
 
@@ -493,8 +493,8 @@ namespace
       netlist << "C" << i << " " << node2 << " 0 1n\n";
     }
 
-    netlist << ".PSS 1u MATRIXFREE GMRESRESTART=20 GMRESMAXITER=20 "
-               "GMRESPRECOND=DIAG GMRESPRECONDMAX=200 GMRESLOG\n";
+    netlist << ".PSS 1u MATRIXFREE GMRESRESTART=20 GMRESMAXITER=20 GMRESTOL=0.01 "
+               "GMRESPRECOND=DIAG GMRESPRECONDMAX=200 GMRESLOG PERFLOG\n";
     netlist << ".PRINT PSS V(40) V(80)\n";
     netlist << ".END\n";
 
@@ -511,6 +511,63 @@ namespace
       status = xycePtr->runSimulation();
       EXPECT_NE(status, Simulator::RunStatus::ERROR)
         << "MPI matrix-free large circuit should converge";
+    }
+
+    xycePtr->finalize();
+    delete xycePtr;
+  }
+
+  //-------------------------------------------------------------------------
+  // Test 7c: Mixed RLC + Diode MPI Matrix-Free
+  //-------------------------------------------------------------------------
+  TEST_F(PSSChallengingTest, MPI_MixedRLC_Diode_MatrixFree)
+  {
+    if (!allowFullPssSimulation())
+    {
+      GTEST_SKIP() << "Set XYCE_RUN_PSS_FULL_SIM=1 to run full PSS simulations.";
+    }
+    if (getMpiSizeFromEnv() < 2)
+    {
+      GTEST_SKIP() << "Requires MPI size >= 2.";
+    }
+
+    std::ostringstream netlist;
+    netlist << "* Mixed RLC + Diode Ladder (MPI matrix-free)\n";
+    netlist << "V1 1 0 SIN(0 2 2e6)\n";
+    netlist << ".MODEL DCLAMP D (IS=1e-12 N=1.2 RS=0.05)\n";
+
+    const int numStages = 40;
+    for (int i = 1; i <= numStages; ++i)
+    {
+      int node1 = i;
+      int node2 = i + 1;
+      netlist << "R" << i << " " << node1 << " " << node2 << " 500\n";
+      netlist << "C" << i << " " << node2 << " 0 0.5n\n";
+      if (i % 10 == 0)
+      {
+        netlist << "L" << i << " " << node2 << " 0 20n\n";
+      }
+    }
+
+    netlist << "D1 20 0 DCLAMP\n";
+    netlist << ".PSS 500n MATRIXFREE GMRESRESTART=30 GMRESMAXITER=60 GMRESTOL=0.01 "
+               "GMRESPRECOND=DIAG GMRESPRECONDMAX=200 GMRESLOG PERFLOG\n";
+    netlist << ".PRINT PSS V(10) V(20) V(30) I(D1)\n";
+    netlist << ".END\n";
+
+    std::ofstream out("TestNetlist_MixedRLC_Diode_MPI.cir");
+    out << netlist.str();
+    out.close();
+
+    Simulator* xycePtr = new Simulator();
+    auto cmd = createCmdLineArgs("TestNetlist_MixedRLC_Diode_MPI.cir");
+    Simulator::RunStatus status = xycePtr->initialize(cmd.argv.size(), cmd.argv.data());
+
+    if (status == Simulator::RunStatus::SUCCESS)
+    {
+      status = xycePtr->runSimulation();
+      EXPECT_NE(status, Simulator::RunStatus::ERROR)
+        << "MPI mixed RLC+diode ladder should converge";
     }
 
     xycePtr->finalize();

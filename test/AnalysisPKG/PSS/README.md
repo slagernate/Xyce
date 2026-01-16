@@ -42,6 +42,21 @@ make
 ctest -L pss
 # Or run specific test
 ./test/AnalysisPKG/PSS/PSS_ShootingMethod_UnitTests
+
+## Running Full-Simulation Tests (MPI Builds)
+
+When Xyce is built with MPI enabled, running multiple full-simulation tests in a
+single process can trigger MPI_Finalize issues. To avoid this, run each test in
+a separate process using the helper script:
+
+```
+./test/AnalysisPKG/PSS/run_pss_full_sim_tests.sh /path/to/build
+```
+
+This script sets `XYCE_RUN_PSS_FULL_SIM=1` and runs each integration/challenging
+test individually. Matrix-free runs can use `.PSS MATRIXFREE` with optional
+`GMRESRESTART`, `GMRESMAXITER`, `GMRESTOL`, `GMRESPRECOND`, `GMRESPRECONDMAX`,
+`GMRESLOG`, and `PERFLOG`.
 ```
 
 ## Test Coverage
