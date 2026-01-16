@@ -59,6 +59,29 @@
 namespace Xyce {
 namespace Analysis {
 
+namespace {
+void configurePssStepControl(TimeIntg::StepErrorControl &sec, const TimeIntg::TIAParams &tiaParams, double period)
+{
+  const double defaultInit = period / 100.0;
+  const double defaultMin = period / 1e6;
+  const double defaultMax = period / 10.0;
+
+  sec.currentTimeStep = (tiaParams.initialTimeStep > 0.0) ? tiaParams.initialTimeStep : defaultInit;
+
+  if (tiaParams.minTimeStepGiven && tiaParams.minTimeStep > 0.0)
+    sec.minTimeStep = tiaParams.minTimeStep;
+  else
+    sec.minTimeStep = defaultMin;
+
+  if (tiaParams.maxTimeStepGiven && tiaParams.maxTimeStep > 0.0)
+    sec.maxTimeStep = tiaParams.maxTimeStep;
+  else
+    sec.maxTimeStep = defaultMax;
+
+  sec.finalTime = period;
+}
+} // namespace
+
 //-----------------------------------------------------------------------------
 // Function      : PSS::PSS
 // Purpose       : Constructor
@@ -244,10 +267,7 @@ bool PSS::doInit()
   analysisManager_.getStepErrorControl().initialTime = 0.0;
   analysisManager_.getStepErrorControl().currentTime = 0.0;
   analysisManager_.getStepErrorControl().nextTime = 0.0;
-  analysisManager_.getStepErrorControl().currentTimeStep = period_ / 100.0; // Initial step size
-  analysisManager_.getStepErrorControl().minTimeStep = period_ / 1e6; // Very small min step
-  analysisManager_.getStepErrorControl().maxTimeStep = period_ / 10.0; // Reasonable max step
-  analysisManager_.getStepErrorControl().finalTime = period_;
+  configurePssStepControl(analysisManager_.getStepErrorControl(), tiaParams_, period_);
   
   // Initialize time integrator
   analysisManager_.getWorkingIntegrationMethod().initialize(tiaParams_);
@@ -1013,9 +1033,7 @@ Linear::Vector *PSS::computeResidualVector(Linear::Vector *x0, double period)
   // Reset time and adjust step parameters to match the period
   sec.currentTime = 0.0;
   sec.nextTime = 0.0;
-  sec.currentTimeStep = period / 100.0;
-  sec.minTimeStep = period / 1e6;
-  sec.maxTimeStep = period / 10.0;
+  configurePssStepControl(sec, tiaParams_, period);
   analysisManager_.getWorkingIntegrationMethod().initialize(tiaParams_);
   
   // Integrate from 0 to T
