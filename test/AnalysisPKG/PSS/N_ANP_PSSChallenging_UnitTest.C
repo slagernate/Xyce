@@ -153,6 +153,55 @@ namespace
   }
 
   //-------------------------------------------------------------------------
+  // Test 1b: Diode Rectifier MPI Matrix-Free
+  //-------------------------------------------------------------------------
+  TEST_F(PSSChallengingTest, MPI_DiodeRectifier_MatrixFree)
+  {
+    if (!allowFullPssSimulation())
+    {
+      GTEST_SKIP() << "Set XYCE_RUN_PSS_FULL_SIM=1 to run full PSS simulations.";
+    }
+    if (getMpiSizeFromEnv() < 2)
+    {
+      GTEST_SKIP() << "Requires MPI size >= 2.";
+    }
+
+    std::string netlist =
+      "* Diode Rectifier - MPI matrix-free\n"
+      "V1 1 0 SIN(0 5 1e6)\n"
+      "D1 1 2 D1N4001\n"
+      "R1 2 0 1k\n"
+      "C1 2 0 10n\n"
+      ".MODEL D1N4001 D (IS=1e-12 N=1.5 RS=0.1)\n"
+      ".PSS 1u MATRIXFREE GMRESRESTART=20 GMRESMAXITER=40 GMRESTOL=0.01 "
+      "GMRESPRECOND=DIAG GMRESPRECONDMAX=200 GMRESLOG\n"
+      ".PRINT PSS V(2) I(D1)\n"
+      ".END\n";
+
+    std::ofstream out("TestNetlist_DiodeRectifier_MPI.cir");
+    out << netlist;
+    out.close();
+
+    Simulator* xycePtr = new Simulator();
+    ASSERT_TRUE(xycePtr != nullptr);
+
+    auto cmd = createCmdLineArgs("TestNetlist_DiodeRectifier_MPI.cir");
+    Simulator::RunStatus status = xycePtr->initialize(cmd.argv.size(), cmd.argv.data());
+
+    if (status == Simulator::RunStatus::SUCCESS)
+    {
+      status = xycePtr->runSimulation();
+      EXPECT_NE(status, Simulator::RunStatus::ERROR)
+        << "MPI diode rectifier should converge with matrix-free GMRES";
+    }
+
+    status = xycePtr->finalize();
+    EXPECT_EQ(status, Simulator::RunStatus::SUCCESS);
+
+    delete xycePtr;
+  }
+
+  //-------------------------------------------------------------------------
   // Test 2: Stiff System - Widely Separated Time Constants
   //-------------------------------------------------------------------------
   // Tests PSS with a circuit having widely separated time constants

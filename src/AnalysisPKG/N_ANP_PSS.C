@@ -127,7 +127,8 @@ PSS::PSS(
     gmresMaxIter_(20),
     gmresLog_(false),
     gmresPrecondDiag_(false),
-    gmresPrecondMaxN_(200)
+    gmresPrecondMaxN_(200),
+    gmresTol_(0.1)
 {
 }
 
@@ -238,6 +239,10 @@ bool PSS::setAnalysisParams(const Util::OptionBlock & paramsBlock)
     else if (tag == "GMRESLOG")
     {
       gmresLog_ = static_cast<bool>((*it).getImmutableValue<bool>());
+    }
+    else if (tag == "GMRESTOL")
+    {
+      gmresTol_ = (*it).getImmutableValue<double>();
     }
     else if (tag == "GMRESPRECOND")
     {
@@ -1164,29 +1169,29 @@ bool PSS::solveNewtonSystemMatrixFree(Linear::Vector *x0, Linear::Vector *residu
       b->setElementByGlobalIndex(gid, val * scale);
     }
   }
-  double beta = std::sqrt(b->dotProduct(*b));
-  if (beta == 0.0)
+  Linear::Vector *r = ds.builder_.createVector();
+  r->update(1.0, *b, 0.0);
+  double beta0 = std::sqrt(r->dotProduct(*r));
+  if (beta0 == 0.0)
   {
     update->putScalar(0.0);
+    delete r;
     delete b;
     return true;
   }
 
   const int restart = std::min(std::max(2, gmresRestart_), n);
-  const int maxIters = std::min(std::max(2, gmresMaxIter_), restart);
-  const double tol = std::max(1.0e-12, 0.1 * beta);
+  const int maxIters = std::max(2, gmresMaxIter_);
+  const double tol = std::max(1.0e-12, gmresTol_ * beta0);
 
   std::vector<Linear::Vector *> v(restart + 1, nullptr);
   for (int i = 0; i < restart + 1; ++i)
     v[i] = ds.builder_.createVector();
 
-  v[0]->update(1.0 / beta, *b, 0.0);
-
   std::vector<double> h((restart + 1) * restart, 0.0);
   std::vector<double> cs(restart, 0.0);
   std::vector<double> sn(restart, 0.0);
   std::vector<double> g(restart + 1, 0.0);
-  g[0] = beta;
 
   Linear::Vector *w = ds.builder_.createVector();
 
@@ -1214,12 +1219,32 @@ bool PSS::solveNewtonSystemMatrixFree(Linear::Vector *x0, Linear::Vector *residu
     }
   };
 
-  int iterCount = 0;
-  int lastDim = restart;
+  update->putScalar(0.0);
+  int totalIters = 0;
+  int lastDim = 0;
+  double finalRes = beta0;
   bool converged = false;
-  for (iterCount = 0; iterCount < maxIters && !converged; iterCount += restart)
+  bool solveOk = true;
+
+  while (totalIters < maxIters && !converged && solveOk)
   {
-    for (int j = 0; j < restart; ++j)
+    double beta = std::sqrt(r->dotProduct(*r));
+    finalRes = beta;
+    if (beta <= tol)
+    {
+      converged = true;
+      break;
+    }
+
+    v[0]->update(1.0 / beta, *r, 0.0);
+    std::fill(h.begin(), h.end(), 0.0);
+    std::fill(cs.begin(), cs.end(), 0.0);
+    std::fill(sn.begin(), sn.end(), 0.0);
+    std::fill(g.begin(), g.end(), 0.0);
+    g[0] = beta;
+
+    int cycleDim = 0;
+    for (int j = 0; j < restart && totalIters < maxIters; ++j, ++totalIters)
     {
       applyJacobian(v[j], w);
 
@@ -1255,44 +1280,46 @@ bool PSS::solveNewtonSystemMatrixFree(Linear::Vector *x0, Linear::Vector *residu
       g[j + 1] = -sn[j] * g[j];
       g[j] = tempG;
 
+      cycleDim = j + 1;
       if (std::fabs(g[j + 1]) <= tol)
       {
-        lastDim = j + 1;
         converged = true;
+        finalRes = std::fabs(g[j + 1]);
         break;
       }
     }
 
-    if (converged)
+    lastDim = cycleDim;
+    if (lastDim <= 0)
       break;
-  }
 
-  if (!converged)
-    lastDim = restart;
-
-  bool solveOk = true;
-  std::vector<double> y(lastDim, 0.0);
-  for (int i = lastDim - 1; i >= 0; --i)
-  {
-    double sum = g[i];
-    for (int j = i + 1; j < lastDim; ++j)
-      sum -= h[i * restart + j] * y[j];
-    if (h[i * restart + i] == 0.0)
+    std::vector<double> y(lastDim, 0.0);
+    for (int i = lastDim - 1; i >= 0; --i)
     {
-      solveOk = false;
-      break;
+      double sum = g[i];
+      for (int j = i + 1; j < lastDim; ++j)
+        sum -= h[i * restart + j] * y[j];
+      if (h[i * restart + i] == 0.0)
+      {
+        solveOk = false;
+        break;
+      }
+      y[i] = sum / h[i * restart + i];
     }
-    y[i] = sum / h[i * restart + i];
-  }
 
-  update->putScalar(0.0);
-  if (solveOk)
-  {
+    if (!solveOk)
+      break;
+
     for (int i = 0; i < lastDim; ++i)
       update->update(y[i], *v[i], 1.0);
+
+    applyJacobian(update, w);
+    r->update(1.0, *b, 0.0);
+    r->update(-1.0, *w, 1.0);
   }
 
   delete w;
+  delete r;
   delete b;
   delete diagInv;
   for (Linear::Vector *vec : v)
@@ -1300,13 +1327,12 @@ bool PSS::solveNewtonSystemMatrixFree(Linear::Vector *x0, Linear::Vector *residu
 
   if (!converged)
   {
-    Report::UserWarning0() << "PSS: GMRES did not converge in " << lastDim
+    Report::UserWarning0() << "PSS: GMRES did not converge in " << totalIters
                            << " iterations; using approximate update.";
   }
   if (gmresLog_)
   {
-    double finalRes = (lastDim < static_cast<int>(g.size())) ? std::fabs(g[lastDim]) : 0.0;
-    Report::UserInfo0() << "PSS: GMRES iterations=" << lastDim << " residual=" << finalRes;
+    Report::UserInfo0() << "PSS: GMRES iterations=" << totalIters << " residual=" << finalRes;
   }
 
   return solveOk;
@@ -1370,32 +1396,32 @@ bool PSS::solveNewtonSystemMatrixFreeAutonomous(Linear::Vector *x0, Linear::Vect
 
     phaseCondition *= 1.0; // no scaling on phase row
   }
-  double beta = std::sqrt(bX->dotProduct(*bX) + phaseCondition * phaseCondition);
-  if (beta == 0.0)
+  Linear::Vector *rX = ds.builder_.createVector();
+  rX->update(1.0, *bX, 0.0);
+  double rT = -phaseCondition;
+  double beta0 = std::sqrt(rX->dotProduct(*rX) + rT * rT);
+  if (beta0 == 0.0)
   {
     update->putScalar(0.0);
     periodUpdate = 0.0;
+    delete rX;
     delete bX;
     return true;
   }
 
   const int restart = std::min(std::max(2, gmresRestart_), n + 1);
-  const int maxIters = std::min(std::max(2, gmresMaxIter_), restart);
-  const double tol = std::max(1.0e-12, 0.1 * beta);
+  const int maxIters = std::max(2, gmresMaxIter_);
+  const double tol = std::max(1.0e-12, gmresTol_ * beta0);
 
   std::vector<Linear::Vector *> vX(restart + 1, nullptr);
   std::vector<double> vT(restart + 1, 0.0);
   for (int i = 0; i < restart + 1; ++i)
     vX[i] = ds.builder_.createVector();
 
-  vX[0]->update(1.0 / beta, *bX, 0.0);
-  vT[0] = -phaseCondition / beta;
-
   std::vector<double> h((restart + 1) * restart, 0.0);
   std::vector<double> cs(restart, 0.0);
   std::vector<double> sn(restart, 0.0);
   std::vector<double> g(restart + 1, 0.0);
-  g[0] = beta;
 
   Linear::Vector *wX = ds.builder_.createVector();
   double wT = 0.0;
@@ -1428,12 +1454,34 @@ bool PSS::solveNewtonSystemMatrixFreeAutonomous(Linear::Vector *x0, Linear::Vect
     }
   };
 
-  int iterCount = 0;
-  int lastDim = restart;
+  update->putScalar(0.0);
+  periodUpdate = 0.0;
+  int totalIters = 0;
+  int lastDim = 0;
+  double finalRes = beta0;
   bool converged = false;
-  for (iterCount = 0; iterCount < maxIters && !converged; iterCount += restart)
+  bool solveOk = true;
+
+  while (totalIters < maxIters && !converged && solveOk)
   {
-    for (int j = 0; j < restart; ++j)
+    double beta = std::sqrt(rX->dotProduct(*rX) + rT * rT);
+    finalRes = beta;
+    if (beta <= tol)
+    {
+      converged = true;
+      break;
+    }
+
+    vX[0]->update(1.0 / beta, *rX, 0.0);
+    vT[0] = rT / beta;
+    std::fill(h.begin(), h.end(), 0.0);
+    std::fill(cs.begin(), cs.end(), 0.0);
+    std::fill(sn.begin(), sn.end(), 0.0);
+    std::fill(g.begin(), g.end(), 0.0);
+    g[0] = beta;
+
+    int cycleDim = 0;
+    for (int j = 0; j < restart && totalIters < maxIters; ++j, ++totalIters)
     {
       applyJacobian(vX[j], vT[j], wX, wT);
 
@@ -1476,48 +1524,50 @@ bool PSS::solveNewtonSystemMatrixFreeAutonomous(Linear::Vector *x0, Linear::Vect
       g[j + 1] = -sn[j] * g[j];
       g[j] = tempG;
 
+      cycleDim = j + 1;
       if (std::fabs(g[j + 1]) <= tol)
       {
-        lastDim = j + 1;
         converged = true;
+        finalRes = std::fabs(g[j + 1]);
         break;
       }
     }
 
-    if (converged)
+    lastDim = cycleDim;
+    if (lastDim <= 0)
       break;
-  }
 
-  if (!converged)
-    lastDim = restart;
-
-  bool solveOk = true;
-  std::vector<double> y(lastDim, 0.0);
-  for (int i = lastDim - 1; i >= 0; --i)
-  {
-    double sum = g[i];
-    for (int j = i + 1; j < lastDim; ++j)
-      sum -= h[i * restart + j] * y[j];
-    if (h[i * restart + i] == 0.0)
+    std::vector<double> y(lastDim, 0.0);
+    for (int i = lastDim - 1; i >= 0; --i)
     {
-      solveOk = false;
-      break;
+      double sum = g[i];
+      for (int j = i + 1; j < lastDim; ++j)
+        sum -= h[i * restart + j] * y[j];
+      if (h[i * restart + i] == 0.0)
+      {
+        solveOk = false;
+        break;
+      }
+      y[i] = sum / h[i * restart + i];
     }
-    y[i] = sum / h[i * restart + i];
-  }
 
-  update->putScalar(0.0);
-  periodUpdate = 0.0;
-  if (solveOk)
-  {
+    if (!solveOk)
+      break;
+
     for (int i = 0; i < lastDim; ++i)
     {
       update->update(y[i], *vX[i], 1.0);
       periodUpdate += y[i] * vT[i];
     }
+
+    applyJacobian(update, periodUpdate, wX, wT);
+    rX->update(1.0, *bX, 0.0);
+    rX->update(-1.0, *wX, 1.0);
+    rT = (-phaseCondition) - wT;
   }
 
   delete wX;
+  delete rX;
   delete bX;
   delete diagInv;
   for (Linear::Vector *vec : vX)
@@ -1525,13 +1575,12 @@ bool PSS::solveNewtonSystemMatrixFreeAutonomous(Linear::Vector *x0, Linear::Vect
 
   if (!converged)
   {
-    Report::UserWarning0() << "PSS: GMRES(auto) did not converge in " << lastDim
+    Report::UserWarning0() << "PSS: GMRES(auto) did not converge in " << totalIters
                            << " iterations; using approximate update.";
   }
   if (gmresLog_)
   {
-    double finalRes = (lastDim < static_cast<int>(g.size())) ? std::fabs(g[lastDim]) : 0.0;
-    Report::UserInfo0() << "PSS: GMRES(auto) iterations=" << lastDim << " residual=" << finalRes;
+    Report::UserInfo0() << "PSS: GMRES(auto) iterations=" << totalIters << " residual=" << finalRes;
   }
 
   return solveOk;
@@ -2121,6 +2170,28 @@ bool extractPSSData(
         }
       }
       option_block.addParam(Util::Param("GMRESMAXITER", parsed_line[linePosition].string_));
+      ++linePosition;
+    }
+    else if (paramName == "GMRESTOL")
+    {
+      ++linePosition;
+      if (linePosition >= numFields)
+      {
+        Report::UserError0().at(netlist_filename, parsed_line[0].lineNumber_)
+          << ".PSS GMRESTOL requires a value";
+        return false;
+      }
+      if (parsed_line[linePosition].string_ == "=")
+      {
+        ++linePosition;
+        if (linePosition >= numFields)
+        {
+          Report::UserError0().at(netlist_filename, parsed_line[0].lineNumber_)
+            << ".PSS GMRESTOL requires a value";
+          return false;
+        }
+      }
+      option_block.addParam(Util::Param("GMRESTOL", parsed_line[linePosition].string_));
       ++linePosition;
     }
     else if (paramName == "GMRESLOG")

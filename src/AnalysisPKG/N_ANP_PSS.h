@@ -177,6 +177,7 @@ private:
   bool                  gmresLog_;
   bool                  gmresPrecondDiag_;
   int                   gmresPrecondMaxN_;
+  double                gmresTol_;
 
   std::vector<AnalysisBase *> parentAnalysisPtrVec_;
 };

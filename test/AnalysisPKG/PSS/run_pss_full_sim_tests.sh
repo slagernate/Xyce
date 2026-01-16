@@ -64,6 +64,7 @@ run_tests "PSS_Integration_UnitTests" \
 # Challenging tests
 run_tests "PSS_Challenging_UnitTests" \
   "PSSChallengingTest.DiodeRectifier_StrongNonlinearity" \
+  "PSSChallengingTest.MPI_DiodeRectifier_MatrixFree" \
   "PSSChallengingTest.StiffSystem_WidelySeparatedTimeConstants" \
   "PSSChallengingTest.PoorInitialGuess_FarFromSolution" \
   "PSSChallengingTest.VerySmallPeriod_HighFrequency" \
