@@ -28,10 +28,14 @@ run_tests() {
   local run_cmd=("./$binary")
 
   if command -v mpirun >/dev/null 2>&1; then
+    local mpirun_env=("-x" "XYCE_RUN_PSS_FULL_SIM")
+    if [[ -n "${XYCE_PSS_MATRIX_FREE:-}" ]]; then
+      mpirun_env+=("-x" "XYCE_PSS_MATRIX_FREE")
+    fi
     if [[ "$(id -u)" -eq 0 ]]; then
-      run_cmd=("mpirun" "--allow-run-as-root" "-np" "$MPI_NP" "./$binary")
+      run_cmd=("mpirun" "--allow-run-as-root" "-np" "$MPI_NP" "${mpirun_env[@]}" "./$binary")
     elif [[ "$MPI_NP" -gt 1 ]]; then
-      run_cmd=("mpirun" "-np" "$MPI_NP" "./$binary")
+      run_cmd=("mpirun" "-np" "$MPI_NP" "${mpirun_env[@]}" "./$binary")
     fi
   fi
 
