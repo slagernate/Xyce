@@ -132,7 +132,16 @@ public:
 private:
   // Helper functions for shooting method
   bool integrateOnePeriod();
+  bool integrateOnePeriod(double period); // Overload for autonomous mode with variable period
   Linear::Vector *computeNewtonUpdate(Linear::Vector *residual, Linear::Vector *x0);
+  Linear::Vector *computeNewtonUpdateAutonomous(Linear::Vector *residual, Linear::Vector *x0, double &periodUpdate);
+  bool computeJacobianFiniteDifference(Linear::Vector *x0, Linear::Vector *residual0, std::vector<double> &jacobian);
+  bool computeJacobianFiniteDifferenceAutonomous(Linear::Vector *x0, double period, Linear::Vector *residual0,
+                                                 double phaseCondition, std::vector<double> &jacobian);
+  Linear::Vector *computeResidualVector(Linear::Vector *x0);
+  Linear::Vector *computeResidualVector(Linear::Vector *x0, double period);
+  double computePerturbation(double value) const;
+  double computePhaseCondition(Linear::Vector *x0); // Phase condition: dV/dt = 0 at refNode
   AnalysisManager &     analysisManager_;
   Loader::Loader &      loader_;
   Linear::System *      linearSystemPtr_;
@@ -162,6 +171,8 @@ private:
 
   std::vector<AnalysisBase *> parentAnalysisPtrVec_;
 };
+
+bool registerPSSFactory(FactoryBlock &factory_block);
 
 } // namespace Analysis
 } // namespace Xyce
