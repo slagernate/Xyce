@@ -29,8 +29,9 @@
 #include <N_IO_OutputterTimeTecplot.h>
 #include <N_IO_OutputterTimeProbe.h>
 #include <N_IO_OutputterTimeRaw.h>
-#include <N_IO_OutputterTimeRawAscii.h>
+#include <N_IO_OutputterTimeRawASCII.h>
 #include <N_IO_OutputterExternal.h>
+#include <N_ERH_ErrorMgr.h>
 
 namespace Xyce {
 namespace IO {
