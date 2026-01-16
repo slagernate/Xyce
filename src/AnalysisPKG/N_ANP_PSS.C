@@ -751,7 +751,15 @@ Linear::Vector *PSS::computeNewtonUpdateAutonomous(Linear::Vector *residual, Lin
   }
 
   const char *matrixFreeEnv = std::getenv("XYCE_PSS_MATRIX_FREE");
-  const bool useMatrixFree = (matrixFreeEnv && std::string(matrixFreeEnv) == "1");
+  bool useMatrixFree = false;
+  if (matrixFreeEnv)
+  {
+    useMatrixFree = (std::string(matrixFreeEnv) == "1");
+  }
+  else if (comm->numProc() > 1)
+  {
+    useMatrixFree = true;
+  }
   if (useMatrixFree)
   {
     if (solveNewtonSystemMatrixFreeAutonomous(x0, residual, phaseCondition, period_, update, periodUpdate))
@@ -1489,7 +1497,15 @@ Linear::Vector *PSS::computeNewtonUpdate(Linear::Vector *residual, Linear::Vecto
   }
 
   const char *matrixFreeEnv = std::getenv("XYCE_PSS_MATRIX_FREE");
-  const bool useMatrixFree = (matrixFreeEnv && std::string(matrixFreeEnv) == "1");
+  bool useMatrixFree = false;
+  if (matrixFreeEnv)
+  {
+    useMatrixFree = (std::string(matrixFreeEnv) == "1");
+  }
+  else if (comm->numProc() > 1)
+  {
+    useMatrixFree = true;
+  }
   if (useMatrixFree)
   {
     if (solveNewtonSystemMatrixFree(x0, residual, update))
