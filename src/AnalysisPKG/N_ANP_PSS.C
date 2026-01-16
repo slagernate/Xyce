@@ -1270,6 +1270,7 @@ bool PSS::solveNewtonSystemMatrixFree(Linear::Vector *x0, Linear::Vector *residu
   if (!converged)
     lastDim = restart;
 
+  bool solveOk = true;
   std::vector<double> y(lastDim, 0.0);
   for (int i = lastDim - 1; i >= 0; --i)
   {
@@ -1278,14 +1279,14 @@ bool PSS::solveNewtonSystemMatrixFree(Linear::Vector *x0, Linear::Vector *residu
       sum -= h[i * restart + j] * y[j];
     if (h[i * restart + i] == 0.0)
     {
-      converged = false;
+      solveOk = false;
       break;
     }
     y[i] = sum / h[i * restart + i];
   }
 
   update->putScalar(0.0);
-  if (converged)
+  if (solveOk)
   {
     for (int i = 0; i < lastDim; ++i)
       update->update(y[i], *v[i], 1.0);
@@ -1297,13 +1298,18 @@ bool PSS::solveNewtonSystemMatrixFree(Linear::Vector *x0, Linear::Vector *residu
   for (Linear::Vector *vec : v)
     delete vec;
 
+  if (!converged)
+  {
+    Report::UserWarning0() << "PSS: GMRES did not converge in " << lastDim
+                           << " iterations; using approximate update.";
+  }
   if (gmresLog_)
   {
     double finalRes = (lastDim < static_cast<int>(g.size())) ? std::fabs(g[lastDim]) : 0.0;
     Report::UserInfo0() << "PSS: GMRES iterations=" << lastDim << " residual=" << finalRes;
   }
 
-  return converged;
+  return solveOk;
 }
 
 //-----------------------------------------------------------------------------
@@ -1485,6 +1491,7 @@ bool PSS::solveNewtonSystemMatrixFreeAutonomous(Linear::Vector *x0, Linear::Vect
   if (!converged)
     lastDim = restart;
 
+  bool solveOk = true;
   std::vector<double> y(lastDim, 0.0);
   for (int i = lastDim - 1; i >= 0; --i)
   {
@@ -1493,7 +1500,7 @@ bool PSS::solveNewtonSystemMatrixFreeAutonomous(Linear::Vector *x0, Linear::Vect
       sum -= h[i * restart + j] * y[j];
     if (h[i * restart + i] == 0.0)
     {
-      converged = false;
+      solveOk = false;
       break;
     }
     y[i] = sum / h[i * restart + i];
@@ -1501,7 +1508,7 @@ bool PSS::solveNewtonSystemMatrixFreeAutonomous(Linear::Vector *x0, Linear::Vect
 
   update->putScalar(0.0);
   periodUpdate = 0.0;
-  if (converged)
+  if (solveOk)
   {
     for (int i = 0; i < lastDim; ++i)
     {
@@ -1516,13 +1523,18 @@ bool PSS::solveNewtonSystemMatrixFreeAutonomous(Linear::Vector *x0, Linear::Vect
   for (Linear::Vector *vec : vX)
     delete vec;
 
+  if (!converged)
+  {
+    Report::UserWarning0() << "PSS: GMRES(auto) did not converge in " << lastDim
+                           << " iterations; using approximate update.";
+  }
   if (gmresLog_)
   {
     double finalRes = (lastDim < static_cast<int>(g.size())) ? std::fabs(g[lastDim]) : 0.0;
     Report::UserInfo0() << "PSS: GMRES(auto) iterations=" << lastDim << " residual=" << finalRes;
   }
 
-  return converged;
+  return solveOk;
 }
 
 //-----------------------------------------------------------------------------
