@@ -418,12 +418,22 @@ bool PSSShootingMethod::newtonStepAutonomous(
     }
     delta[i] /= aug[i][i];
   }
+
+  // Guard against NaN/Inf updates
+  for (int i = 0; i < dim + 1; ++i) {
+    if (!std::isfinite(delta[i])) {
+      return false;
+    }
+  }
   
   // Update: x0 = x0 + delta_x, T = T + delta_T
   for (int i = 0; i < dim; ++i) {
     x0[i] += delta[i];
   }
   params_.period += delta[dim];
+  if (!std::isfinite(params_.period) || params_.period <= 0.0) {
+    return false;
+  }
   lastResult_.period = params_.period;
   
   return true;
