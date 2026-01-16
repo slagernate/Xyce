@@ -70,11 +70,13 @@ public:
   
   void analyticalSolution(double t, std::vector<double>& x) override
   {
-    // Analytical periodic solution for x(0) = x(T)
+    // Analytical periodic solution for dx/dt = -x + sin(2πt/T)
+    // Particular solution: x(t) = P*cos(ωt) + Q*sin(ωt)
+    // where ω = 2π/T, Q = 1/(ω²+1), P = -ω/(ω²+1)
     double omega = 2.0 * M_PI / period_;
-    double A = omega / (1.0 + omega * omega);
-    double B = 1.0 / (1.0 + omega * omega);
-    x[0] = A * std::cos(omega * t) + B * std::sin(omega * t);
+    double Q = 1.0 / (1.0 + omega * omega);
+    double P = -omega / (1.0 + omega * omega);
+    x[0] = P * std::cos(omega * t) + Q * std::sin(omega * t);
   }
   
 private:
