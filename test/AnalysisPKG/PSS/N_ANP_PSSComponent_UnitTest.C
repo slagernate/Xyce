@@ -338,7 +338,7 @@ namespace
     std::vector<TestCase> testCases = {
       {1e-7, 10, true},   // Residual below tolerance, within max iterations
       {1e-5, 10, false},  // Residual above tolerance
-      {1e-7, 60, true},   // Residual below tolerance, but exceeded max (edge case)
+      {1e-7, 60, false},  // Residual below tolerance, but exceeded max (should fail)
       {1e-5, 60, false},  // Both criteria failed
     };
     
