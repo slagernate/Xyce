@@ -171,6 +171,9 @@ private:
   double                tolerance_;
   int                   startUpPeriods_;
   bool                  startUpPeriodsGiven_;
+  bool                  matrixFree_;
+  int                   gmresRestart_;
+  int                   gmresMaxIter_;
 
   std::vector<AnalysisBase *> parentAnalysisPtrVec_;
 };

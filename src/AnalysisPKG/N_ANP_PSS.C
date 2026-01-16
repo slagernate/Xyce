@@ -121,7 +121,10 @@ PSS::PSS(
     maxIterations_(50),
     tolerance_(1e-6),
     startUpPeriods_(0),
-    startUpPeriodsGiven_(false)
+    startUpPeriodsGiven_(false),
+    matrixFree_(false),
+    gmresRestart_(20),
+    gmresMaxIter_(20)
 {
 }
 
@@ -216,6 +219,18 @@ bool PSS::setAnalysisParams(const Util::OptionBlock & paramsBlock)
     {
       startUpPeriods_ = (*it).getImmutableValue<int>();
       startUpPeriodsGiven_ = true;
+    }
+    else if (tag == "MATRIXFREE")
+    {
+      matrixFree_ = static_cast<bool>((*it).getImmutableValue<bool>());
+    }
+    else if (tag == "GMRESRESTART")
+    {
+      gmresRestart_ = (*it).getImmutableValue<int>();
+    }
+    else if (tag == "GMRESMAXITER")
+    {
+      gmresMaxIter_ = (*it).getImmutableValue<int>();
     }
   }
   
@@ -780,6 +795,8 @@ Linear::Vector *PSS::computeNewtonUpdateAutonomous(Linear::Vector *residual, Lin
   {
     useMatrixFree = true;
   }
+  if (matrixFree_)
+    useMatrixFree = true;
   if (useMatrixFree)
   {
     if (solveNewtonSystemMatrixFreeAutonomous(x0, residual, phaseCondition, period_, update, periodUpdate))
@@ -1097,8 +1114,8 @@ bool PSS::solveNewtonSystemMatrixFree(Linear::Vector *x0, Linear::Vector *residu
     return true;
   }
 
-  const int restart = std::min(20, n);
-  const int maxIters = restart;
+  const int restart = std::min(std::max(2, gmresRestart_), n);
+  const int maxIters = std::min(std::max(2, gmresMaxIter_), restart);
   const double tol = std::max(1.0e-12, 0.1 * beta);
 
   std::vector<Linear::Vector *> v(restart + 1, nullptr);
@@ -1240,8 +1257,8 @@ bool PSS::solveNewtonSystemMatrixFreeAutonomous(Linear::Vector *x0, Linear::Vect
     return true;
   }
 
-  const int restart = std::min(20, n + 1);
-  const int maxIters = restart;
+  const int restart = std::min(std::max(2, gmresRestart_), n + 1);
+  const int maxIters = std::min(std::max(2, gmresMaxIter_), restart);
   const double tol = std::max(1.0e-12, 0.1 * beta);
 
   std::vector<Linear::Vector *> vX(restart + 1, nullptr);
@@ -1524,6 +1541,8 @@ Linear::Vector *PSS::computeNewtonUpdate(Linear::Vector *residual, Linear::Vecto
   {
     useMatrixFree = true;
   }
+  if (matrixFree_)
+    useMatrixFree = true;
   if (useMatrixFree)
   {
     if (solveNewtonSystemMatrixFree(x0, residual, update))
@@ -1907,6 +1926,55 @@ bool extractPSSData(
         }
       }
       option_block.addParam(Util::Param("STARTPERIODS", parsed_line[linePosition].string_));
+      ++linePosition;
+    }
+    else if (paramName == "MATRIXFREE")
+    {
+      option_block.addParam(Util::Param("MATRIXFREE", 1));
+      ++linePosition;
+    }
+    else if (paramName == "GMRESRESTART")
+    {
+      ++linePosition;
+      if (linePosition >= numFields)
+      {
+        Report::UserError0().at(netlist_filename, parsed_line[0].lineNumber_)
+          << ".PSS GMRESRESTART requires a value";
+        return false;
+      }
+      if (parsed_line[linePosition].string_ == "=")
+      {
+        ++linePosition;
+        if (linePosition >= numFields)
+        {
+          Report::UserError0().at(netlist_filename, parsed_line[0].lineNumber_)
+            << ".PSS GMRESRESTART requires a value";
+          return false;
+        }
+      }
+      option_block.addParam(Util::Param("GMRESRESTART", parsed_line[linePosition].string_));
+      ++linePosition;
+    }
+    else if (paramName == "GMRESMAXITER")
+    {
+      ++linePosition;
+      if (linePosition >= numFields)
+      {
+        Report::UserError0().at(netlist_filename, parsed_line[0].lineNumber_)
+          << ".PSS GMRESMAXITER requires a value";
+        return false;
+      }
+      if (parsed_line[linePosition].string_ == "=")
+      {
+        ++linePosition;
+        if (linePosition >= numFields)
+        {
+          Report::UserError0().at(netlist_filename, parsed_line[0].lineNumber_)
+            << ".PSS GMRESMAXITER requires a value";
+          return false;
+        }
+      }
+      option_block.addParam(Util::Param("GMRESMAXITER", parsed_line[linePosition].string_));
       ++linePosition;
     }
     else
