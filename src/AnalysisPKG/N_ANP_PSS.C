@@ -54,6 +54,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <limits>
 namespace Xyce {
 namespace Analysis {
@@ -749,6 +750,19 @@ Linear::Vector *PSS::computeNewtonUpdateAutonomous(Linear::Vector *residual, Lin
     return update;
   }
 
+  const char *matrixFreeEnv = std::getenv("XYCE_PSS_MATRIX_FREE");
+  const bool useMatrixFree = (matrixFreeEnv && std::string(matrixFreeEnv) == "1");
+  if (useMatrixFree)
+  {
+    if (solveNewtonSystemMatrixFreeAutonomous(x0, residual, phaseCondition, period_, update, periodUpdate))
+    {
+      update->scale(alpha);
+      periodUpdate *= alpha;
+      return update;
+    }
+    Report::UserWarning0() << "PSS: Matrix-free solve failed; falling back to dense solve.";
+  }
+
   const int n = x0->globalLength();
   const int base = x0->pmap()->indexBase();
   const int rank = comm->procID();
@@ -1034,6 +1048,307 @@ double PSS::computePerturbation(double value) const
 }
 
 //-----------------------------------------------------------------------------
+// Function      : PSS::solveNewtonSystemMatrixFree
+// Purpose       : Matrix-free GMRES solve for driven mode
+//-----------------------------------------------------------------------------
+bool PSS::solveNewtonSystemMatrixFree(Linear::Vector *x0, Linear::Vector *residual, Linear::Vector *update)
+{
+  TimeIntg::DataStore &ds = *(analysisManager_.getDataStore());
+  const int n = residual->globalLength();
+  if (n <= 0)
+  {
+    update->putScalar(0.0);
+    return true;
+  }
+
+  Linear::Vector *b = ds.builder_.createVector();
+  b->update(-1.0, *residual, 0.0);
+  double beta = std::sqrt(b->dotProduct(*b));
+  if (beta == 0.0)
+  {
+    update->putScalar(0.0);
+    delete b;
+    return true;
+  }
+
+  const int restart = std::min(20, n);
+  const int maxIters = restart;
+  const double tol = std::max(1.0e-12, 0.1 * beta);
+
+  std::vector<Linear::Vector *> v(restart + 1, nullptr);
+  for (int i = 0; i < restart + 1; ++i)
+    v[i] = ds.builder_.createVector();
+
+  v[0]->update(1.0 / beta, *b, 0.0);
+
+  std::vector<double> h((restart + 1) * restart, 0.0);
+  std::vector<double> cs(restart, 0.0);
+  std::vector<double> sn(restart, 0.0);
+  std::vector<double> g(restart + 1, 0.0);
+  g[0] = beta;
+
+  Linear::Vector *w = ds.builder_.createVector();
+
+  auto applyJacobian = [&](Linear::Vector *vec, Linear::Vector *out) {
+    double eps = computePerturbation(0.0);
+    Linear::Vector *xPert = ds.builder_.createVector();
+    xPert->update(1.0, *x0, 0.0);
+    xPert->update(eps, *vec, 1.0);
+
+    Linear::Vector *rPert = computeResidualVector(xPert, period_);
+    out->update(1.0 / eps, *rPert, -1.0 / eps, *residual, 0.0);
+
+    delete rPert;
+    delete xPert;
+  };
+
+  int iterCount = 0;
+  int lastDim = restart;
+  bool converged = false;
+  for (iterCount = 0; iterCount < maxIters && !converged; iterCount += restart)
+  {
+    for (int j = 0; j < restart; ++j)
+    {
+      applyJacobian(v[j], w);
+
+      for (int i = 0; i <= j; ++i)
+      {
+        double hij = w->dotProduct(*v[i]);
+        h[i * restart + j] = hij;
+        w->update(-hij, *v[i], 1.0);
+      }
+
+      double hNext = std::sqrt(w->dotProduct(*w));
+      h[(j + 1) * restart + j] = hNext;
+      if (hNext != 0.0)
+        v[j + 1]->update(1.0 / hNext, *w, 0.0);
+      else
+        v[j + 1]->putScalar(0.0);
+
+      for (int i = 0; i < j; ++i)
+      {
+        double temp = cs[i] * h[i * restart + j] + sn[i] * h[(i + 1) * restart + j];
+        h[(i + 1) * restart + j] = -sn[i] * h[i * restart + j] + cs[i] * h[(i + 1) * restart + j];
+        h[i * restart + j] = temp;
+      }
+
+      double denom = std::sqrt(h[j * restart + j] * h[j * restart + j] +
+                               h[(j + 1) * restart + j] * h[(j + 1) * restart + j]);
+      cs[j] = (denom == 0.0) ? 1.0 : h[j * restart + j] / denom;
+      sn[j] = (denom == 0.0) ? 0.0 : h[(j + 1) * restart + j] / denom;
+      h[j * restart + j] = cs[j] * h[j * restart + j] + sn[j] * h[(j + 1) * restart + j];
+      h[(j + 1) * restart + j] = 0.0;
+
+      double tempG = cs[j] * g[j];
+      g[j + 1] = -sn[j] * g[j];
+      g[j] = tempG;
+
+      if (std::fabs(g[j + 1]) <= tol)
+      {
+        lastDim = j + 1;
+        converged = true;
+        break;
+      }
+    }
+
+    if (converged)
+      break;
+  }
+
+  if (!converged)
+    lastDim = restart;
+
+  std::vector<double> y(lastDim, 0.0);
+  for (int i = lastDim - 1; i >= 0; --i)
+  {
+    double sum = g[i];
+    for (int j = i + 1; j < lastDim; ++j)
+      sum -= h[i * restart + j] * y[j];
+    if (h[i * restart + i] == 0.0)
+    {
+      converged = false;
+      break;
+    }
+    y[i] = sum / h[i * restart + i];
+  }
+
+  update->putScalar(0.0);
+  if (converged)
+  {
+    for (int i = 0; i < lastDim; ++i)
+      update->update(y[i], *v[i], 1.0);
+  }
+
+  delete w;
+  delete b;
+  for (Linear::Vector *vec : v)
+    delete vec;
+
+  return converged;
+}
+
+//-----------------------------------------------------------------------------
+// Function      : PSS::solveNewtonSystemMatrixFreeAutonomous
+// Purpose       : Matrix-free GMRES solve for autonomous mode (x0 and period)
+//-----------------------------------------------------------------------------
+bool PSS::solveNewtonSystemMatrixFreeAutonomous(Linear::Vector *x0, Linear::Vector *residual, double phaseCondition,
+                                                double period, Linear::Vector *update, double &periodUpdate)
+{
+  TimeIntg::DataStore &ds = *(analysisManager_.getDataStore());
+  const int n = residual->globalLength();
+  if (n <= 0)
+  {
+    update->putScalar(0.0);
+    periodUpdate = 0.0;
+    return true;
+  }
+
+  Linear::Vector *bX = ds.builder_.createVector();
+  bX->update(-1.0, *residual, 0.0);
+  double beta = std::sqrt(bX->dotProduct(*bX) + phaseCondition * phaseCondition);
+  if (beta == 0.0)
+  {
+    update->putScalar(0.0);
+    periodUpdate = 0.0;
+    delete bX;
+    return true;
+  }
+
+  const int restart = std::min(20, n + 1);
+  const int maxIters = restart;
+  const double tol = std::max(1.0e-12, 0.1 * beta);
+
+  std::vector<Linear::Vector *> vX(restart + 1, nullptr);
+  std::vector<double> vT(restart + 1, 0.0);
+  for (int i = 0; i < restart + 1; ++i)
+    vX[i] = ds.builder_.createVector();
+
+  vX[0]->update(1.0 / beta, *bX, 0.0);
+  vT[0] = -phaseCondition / beta;
+
+  std::vector<double> h((restart + 1) * restart, 0.0);
+  std::vector<double> cs(restart, 0.0);
+  std::vector<double> sn(restart, 0.0);
+  std::vector<double> g(restart + 1, 0.0);
+  g[0] = beta;
+
+  Linear::Vector *wX = ds.builder_.createVector();
+  double wT = 0.0;
+
+  auto applyJacobian = [&](Linear::Vector *vecX, double vecT, Linear::Vector *outX, double &outT) {
+    double eps = computePerturbation(0.0);
+    Linear::Vector *xPert = ds.builder_.createVector();
+    xPert->update(1.0, *x0, 0.0);
+    xPert->update(eps, *vecX, 1.0);
+    double periodPert = period + eps * vecT;
+
+    Linear::Vector *rPert = computeResidualVector(xPert, periodPert);
+    double phiPert = computePhaseCondition(xPert);
+
+    outX->update(1.0 / eps, *rPert, -1.0 / eps, *residual, 0.0);
+    outT = (phiPert - phaseCondition) / eps;
+
+    delete rPert;
+    delete xPert;
+  };
+
+  int iterCount = 0;
+  int lastDim = restart;
+  bool converged = false;
+  for (iterCount = 0; iterCount < maxIters && !converged; iterCount += restart)
+  {
+    for (int j = 0; j < restart; ++j)
+    {
+      applyJacobian(vX[j], vT[j], wX, wT);
+
+      for (int i = 0; i <= j; ++i)
+      {
+        double hij = wX->dotProduct(*vX[i]) + wT * vT[i];
+        h[i * restart + j] = hij;
+        wX->update(-hij, *vX[i], 1.0);
+        wT -= hij * vT[i];
+      }
+
+      double hNext = std::sqrt(wX->dotProduct(*wX) + wT * wT);
+      h[(j + 1) * restart + j] = hNext;
+      if (hNext != 0.0)
+      {
+        vX[j + 1]->update(1.0 / hNext, *wX, 0.0);
+        vT[j + 1] = wT / hNext;
+      }
+      else
+      {
+        vX[j + 1]->putScalar(0.0);
+        vT[j + 1] = 0.0;
+      }
+
+      for (int i = 0; i < j; ++i)
+      {
+        double temp = cs[i] * h[i * restart + j] + sn[i] * h[(i + 1) * restart + j];
+        h[(i + 1) * restart + j] = -sn[i] * h[i * restart + j] + cs[i] * h[(i + 1) * restart + j];
+        h[i * restart + j] = temp;
+      }
+
+      double denom = std::sqrt(h[j * restart + j] * h[j * restart + j] +
+                               h[(j + 1) * restart + j] * h[(j + 1) * restart + j]);
+      cs[j] = (denom == 0.0) ? 1.0 : h[j * restart + j] / denom;
+      sn[j] = (denom == 0.0) ? 0.0 : h[(j + 1) * restart + j] / denom;
+      h[j * restart + j] = cs[j] * h[j * restart + j] + sn[j] * h[(j + 1) * restart + j];
+      h[(j + 1) * restart + j] = 0.0;
+
+      double tempG = cs[j] * g[j];
+      g[j + 1] = -sn[j] * g[j];
+      g[j] = tempG;
+
+      if (std::fabs(g[j + 1]) <= tol)
+      {
+        lastDim = j + 1;
+        converged = true;
+        break;
+      }
+    }
+
+    if (converged)
+      break;
+  }
+
+  if (!converged)
+    lastDim = restart;
+
+  std::vector<double> y(lastDim, 0.0);
+  for (int i = lastDim - 1; i >= 0; --i)
+  {
+    double sum = g[i];
+    for (int j = i + 1; j < lastDim; ++j)
+      sum -= h[i * restart + j] * y[j];
+    if (h[i * restart + i] == 0.0)
+    {
+      converged = false;
+      break;
+    }
+    y[i] = sum / h[i * restart + i];
+  }
+
+  update->putScalar(0.0);
+  periodUpdate = 0.0;
+  if (converged)
+  {
+    for (int i = 0; i < lastDim; ++i)
+    {
+      update->update(y[i], *vX[i], 1.0);
+      periodUpdate += y[i] * vT[i];
+    }
+  }
+
+  delete wX;
+  delete bX;
+  for (Linear::Vector *vec : vX)
+    delete vec;
+
+  return converged;
+}
+
+//-----------------------------------------------------------------------------
 // Function      : PSS::computeJacobianFiniteDifference
 // Purpose       : Compute Jacobian using finite differences
 // Special Notes : J[i][j] = d(residual[i])/d(x0[j])
@@ -1171,6 +1486,18 @@ Linear::Vector *PSS::computeNewtonUpdate(Linear::Vector *residual, Linear::Vecto
     Report::UserWarning0() << "PSS: Missing communicator; using damped update.";
     update->update(-alpha, *residual, 0.0);
     return update;
+  }
+
+  const char *matrixFreeEnv = std::getenv("XYCE_PSS_MATRIX_FREE");
+  const bool useMatrixFree = (matrixFreeEnv && std::string(matrixFreeEnv) == "1");
+  if (useMatrixFree)
+  {
+    if (solveNewtonSystemMatrixFree(x0, residual, update))
+    {
+      update->scale(alpha);
+      return update;
+    }
+    Report::UserWarning0() << "PSS: Matrix-free solve failed; falling back to dense solve.";
   }
 
   const int n = x0->globalLength();

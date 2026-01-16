@@ -141,6 +141,9 @@ private:
   Linear::Vector *computeResidualVector(Linear::Vector *x0);
   Linear::Vector *computeResidualVector(Linear::Vector *x0, double period);
   double computePerturbation(double value) const;
+  bool solveNewtonSystemMatrixFree(Linear::Vector *x0, Linear::Vector *residual, Linear::Vector *update);
+  bool solveNewtonSystemMatrixFreeAutonomous(Linear::Vector *x0, Linear::Vector *residual, double phaseCondition,
+                                             double period, Linear::Vector *update, double &periodUpdate);
   double computePhaseCondition(Linear::Vector *x0); // Phase condition: dV/dt = 0 at refNode
   AnalysisManager &     analysisManager_;
   Loader::Loader &      loader_;
