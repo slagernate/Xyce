@@ -80,6 +80,7 @@ void configurePssStepControl(TimeIntg::StepErrorControl &sec, const TimeIntg::TI
     sec.maxTimeStep = defaultMax;
 
   sec.finalTime = period;
+  sec.stopTime = period;
 }
 } // namespace
 
@@ -534,6 +535,7 @@ bool PSS::integrateOnePeriod()
   sec.currentTime = 0.0;
   sec.nextTime = 0.0;
   sec.finalTime = period_;
+  sec.stopTime = period_;
   
   // Integration loop
   while (sec.currentTime < period_ - 1e-12)
@@ -600,6 +602,7 @@ bool PSS::integrateOnePeriod(double period)
   sec.currentTime = 0.0;
   sec.nextTime = 0.0;
   sec.finalTime = period;
+  sec.stopTime = period;
   
   // Integration loop
   while (sec.currentTime < period - 1e-12)
@@ -662,6 +665,7 @@ double PSS::computePhaseCondition(Linear::Vector *x0)
   // This means the voltage at the reference node is at an extremum (max or min)
   
   TimeIntg::DataStore &ds = *(analysisManager_.getDataStore());
+  TimeIntg::StepErrorControl &sec = analysisManager_.getStepErrorControl();
   
   // Find the reference node index
   int refNodeIndex = -1;
@@ -710,10 +714,45 @@ double PSS::computePhaseCondition(Linear::Vector *x0)
   
   // Get a small time step
   double dt = period_ / 1000.0; // Small fraction of period
-  
-  // Save current state
-  Linear::Vector *x_save = ds.builder_.createVector();
-  x_save->update(1.0, *x0, 0.0);
+
+  // Save current solution/state/store and time control
+  Linear::Vector *saved_curr_sol = ds.builder_.createVector();
+  Linear::Vector *saved_next_sol = ds.builder_.createVector();
+  saved_curr_sol->update(1.0, *(ds.currSolutionPtr), 0.0);
+  saved_next_sol->update(1.0, *(ds.nextSolutionPtr), 0.0);
+
+  Linear::Vector *saved_curr_state = ds.builder_.createStateVector();
+  Linear::Vector *saved_next_state = ds.builder_.createStateVector();
+  saved_curr_state->update(1.0, *(ds.currStatePtr), 0.0);
+  saved_next_state->update(1.0, *(ds.nextStatePtr), 0.0);
+
+  Linear::Vector *saved_curr_store = ds.builder_.createStoreVector();
+  Linear::Vector *saved_next_store = ds.builder_.createStoreVector();
+  saved_curr_store->update(1.0, *(ds.currStorePtr), 0.0);
+  saved_next_store->update(1.0, *(ds.nextStorePtr), 0.0);
+
+  double savedInitialTime = sec.initialTime;
+  double savedCurrentTime = sec.currentTime;
+  double savedNextTime = sec.nextTime;
+  double savedFinalTime = sec.finalTime;
+  double savedStopTime = sec.stopTime;
+  double savedCurrentTimeStep = sec.currentTimeStep;
+  double savedMinTimeStep = sec.minTimeStep;
+  double savedMaxTimeStep = sec.maxTimeStep;
+
+  // Set initial condition to x0 and integrate a single small step
+  ds.currSolutionPtr->update(1.0, *x0, 0.0);
+  sec.initialTime = 0.0;
+  sec.currentTime = 0.0;
+  sec.nextTime = 0.0;
+  sec.finalTime = dt;
+  sec.stopTime = dt;
+  sec.currentTimeStep = dt;
+  sec.minTimeStep = dt;
+  sec.maxTimeStep = dt;
+  analysisManager_.getWorkingIntegrationMethod().initialize(tiaParams_);
+
+  bool success = integrateOnePeriod(dt);
   
   // Evaluate circuit at t=0 with current state
   // This gives us dx/dt at t=0
@@ -737,23 +776,12 @@ double PSS::computePhaseCondition(Linear::Vector *x0)
   // 2. Evaluate circuit equations: dx/dt = f(x0, 0)
   // 3. Return dx/dt[refNode]
   
-  // Simplified: use the derivative from the next solution step
-  // This is an approximation but works for Phase 3
+  // Use the derivative from a single small step: (x(dt) - x(0)) / dt
   double phaseCondition = 0.0;
-  
-  // Try to get derivative from the time integrator
-  // For autonomous mode, we want dV/dt = 0 at refNode
-  // This is computed from the circuit equations evaluated at x(0), t=0
-  
-  // Phase 3 simplified implementation:
-  // Use the difference between current and next solution as proxy for derivative
-  // This is not exact but provides a working implementation
-  if (ds.currSolutionPtr && ds.nextSolutionPtr)
+  if (success && ds.currSolutionPtr && ds.nextSolutionPtr)
   {
-    // Compute approximate derivative: (x(dt) - x(0)) / dt
-    // For small dt, this approximates dx/dt
     Linear::Vector *deriv = ds.builder_.createVector();
-    deriv->update(1.0 / dt, *(ds.nextSolutionPtr), -1.0 / dt, *(ds.currSolutionPtr), 0.0);
+    deriv->update(1.0 / dt, *(ds.nextSolutionPtr), -1.0 / dt, *x0, 0.0);
 
     double localPhase = 0.0;
     int refLocal = ds.builder_.getSolutionMap()->globalToLocalIndex(refNodeIndex);
@@ -771,7 +799,29 @@ double PSS::computePhaseCondition(Linear::Vector *x0)
     delete deriv;
   }
   
-  delete x_save;
+  // Restore solution/state/store and time control
+  ds.currSolutionPtr->update(1.0, *saved_curr_sol, 0.0);
+  ds.nextSolutionPtr->update(1.0, *saved_next_sol, 0.0);
+  ds.currStatePtr->update(1.0, *saved_curr_state, 0.0);
+  ds.nextStatePtr->update(1.0, *saved_next_state, 0.0);
+  ds.currStorePtr->update(1.0, *saved_curr_store, 0.0);
+  ds.nextStorePtr->update(1.0, *saved_next_store, 0.0);
+
+  sec.initialTime = savedInitialTime;
+  sec.currentTime = savedCurrentTime;
+  sec.nextTime = savedNextTime;
+  sec.finalTime = savedFinalTime;
+  sec.stopTime = savedStopTime;
+  sec.currentTimeStep = savedCurrentTimeStep;
+  sec.minTimeStep = savedMinTimeStep;
+  sec.maxTimeStep = savedMaxTimeStep;
+
+  delete saved_curr_sol;
+  delete saved_next_sol;
+  delete saved_curr_state;
+  delete saved_next_state;
+  delete saved_curr_store;
+  delete saved_next_store;
   
   return phaseCondition;
 }
@@ -1069,9 +1119,30 @@ Linear::Vector *PSS::computeResidualVector(Linear::Vector *x0, double period)
   TimeIntg::DataStore &ds = *(analysisManager_.getDataStore());
   TimeIntg::StepErrorControl &sec = analysisManager_.getStepErrorControl();
   
-  // Save current solution
-  Linear::Vector *saved_sol = ds.builder_.createVector();
-  saved_sol->update(1.0, *(ds.currSolutionPtr), 0.0);
+  // Save current solution/state/store and time control
+  Linear::Vector *saved_curr_sol = ds.builder_.createVector();
+  Linear::Vector *saved_next_sol = ds.builder_.createVector();
+  saved_curr_sol->update(1.0, *(ds.currSolutionPtr), 0.0);
+  saved_next_sol->update(1.0, *(ds.nextSolutionPtr), 0.0);
+
+  Linear::Vector *saved_curr_state = ds.builder_.createStateVector();
+  Linear::Vector *saved_next_state = ds.builder_.createStateVector();
+  saved_curr_state->update(1.0, *(ds.currStatePtr), 0.0);
+  saved_next_state->update(1.0, *(ds.nextStatePtr), 0.0);
+
+  Linear::Vector *saved_curr_store = ds.builder_.createStoreVector();
+  Linear::Vector *saved_next_store = ds.builder_.createStoreVector();
+  saved_curr_store->update(1.0, *(ds.currStorePtr), 0.0);
+  saved_next_store->update(1.0, *(ds.nextStorePtr), 0.0);
+
+  double savedInitialTime = sec.initialTime;
+  double savedCurrentTime = sec.currentTime;
+  double savedNextTime = sec.nextTime;
+  double savedFinalTime = sec.finalTime;
+  double savedStopTime = sec.stopTime;
+  double savedCurrentTimeStep = sec.currentTimeStep;
+  double savedMinTimeStep = sec.minTimeStep;
+  double savedMaxTimeStep = sec.maxTimeStep;
   
   // Set initial condition to x0
   ds.currSolutionPtr->update(1.0, *x0, 0.0);
@@ -1090,8 +1161,28 @@ Linear::Vector *PSS::computeResidualVector(Linear::Vector *x0, double period)
     // Integration failed, return large residual
     Linear::Vector *largeResidual = ds.builder_.createVector();
     largeResidual->putScalar(1e10);
-    ds.currSolutionPtr->update(1.0, *saved_sol, 0.0);
-    delete saved_sol;
+    ds.currSolutionPtr->update(1.0, *saved_curr_sol, 0.0);
+    ds.nextSolutionPtr->update(1.0, *saved_next_sol, 0.0);
+    ds.currStatePtr->update(1.0, *saved_curr_state, 0.0);
+    ds.nextStatePtr->update(1.0, *saved_next_state, 0.0);
+    ds.currStorePtr->update(1.0, *saved_curr_store, 0.0);
+    ds.nextStorePtr->update(1.0, *saved_next_store, 0.0);
+
+    sec.initialTime = savedInitialTime;
+    sec.currentTime = savedCurrentTime;
+    sec.nextTime = savedNextTime;
+    sec.finalTime = savedFinalTime;
+    sec.stopTime = savedStopTime;
+    sec.currentTimeStep = savedCurrentTimeStep;
+    sec.minTimeStep = savedMinTimeStep;
+    sec.maxTimeStep = savedMaxTimeStep;
+
+    delete saved_curr_sol;
+    delete saved_next_sol;
+    delete saved_curr_state;
+    delete saved_next_state;
+    delete saved_curr_store;
+    delete saved_next_store;
     return largeResidual;
   }
   
@@ -1100,8 +1191,28 @@ Linear::Vector *PSS::computeResidualVector(Linear::Vector *x0, double period)
   residual->update(1.0, *(ds.nextSolutionPtr), -1.0, *x0, 0.0);
   
   // Restore solution
-  ds.currSolutionPtr->update(1.0, *saved_sol, 0.0);
-  delete saved_sol;
+  ds.currSolutionPtr->update(1.0, *saved_curr_sol, 0.0);
+  ds.nextSolutionPtr->update(1.0, *saved_next_sol, 0.0);
+  ds.currStatePtr->update(1.0, *saved_curr_state, 0.0);
+  ds.nextStatePtr->update(1.0, *saved_next_state, 0.0);
+  ds.currStorePtr->update(1.0, *saved_curr_store, 0.0);
+  ds.nextStorePtr->update(1.0, *saved_next_store, 0.0);
+
+  sec.initialTime = savedInitialTime;
+  sec.currentTime = savedCurrentTime;
+  sec.nextTime = savedNextTime;
+  sec.finalTime = savedFinalTime;
+  sec.stopTime = savedStopTime;
+  sec.currentTimeStep = savedCurrentTimeStep;
+  sec.minTimeStep = savedMinTimeStep;
+  sec.maxTimeStep = savedMaxTimeStep;
+
+  delete saved_curr_sol;
+  delete saved_next_sol;
+  delete saved_curr_state;
+  delete saved_next_state;
+  delete saved_curr_store;
+  delete saved_next_store;
   
   return residual;
 }
