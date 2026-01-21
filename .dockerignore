@@ -1,0 +1,68 @@
+# Git directories
+.git
+.gitignore
+.gitattributes
+
+# Build directories
+build/
+docker-build/
+docker-install/
+*.o
+*.a
+*.so
+*.dylib
+
+# Documentation
+doc/
+*.md
+README*
+
+# Test files
+test/
+*.cir
+
+# CI/CD files
+gitlab-ci/
+.github/
+
+# Distribution files
+distribution/
+
+# User plugin examples
+user_plugin/
+
+# Python utilities (not needed for build)
+utils/PythonModelInterface/
+utils/SimulinkInterface/
+utils/XyceCInterface/
+
+# ADMS generated files
+utils/ADMS/*.va
+utils/ADMS/*.include
+
+# Temporary files
+*.swp
+*.swo
+*~
+.DS_Store
+
+# IDE files
+.vscode/
+.idea/
+*.code-workspace
+
+# CMake cache
+CMakeCache.txt
+CMakeFiles/
+
+# Autotools (deprecated)
+Makefile
+Makefile.in
+configure
+aclocal.m4
+autom4te.cache/
+
+
+
+
+
