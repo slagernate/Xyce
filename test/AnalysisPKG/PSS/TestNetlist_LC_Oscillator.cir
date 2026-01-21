@@ -1,0 +1,9 @@
+* LC Oscillator for Autonomous PSS Test
+* Simple LC tank circuit that oscillates
+L1 1 0 1u
+C1 1 0 1n
+R1 1 0 1k  ; Small damping resistor
+.PSS 1u AUTONOMOUS REFNODE=1
+.PRINT PSS V(1) I(L1)
+.END
+

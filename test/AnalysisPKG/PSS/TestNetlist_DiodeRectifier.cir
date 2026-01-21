@@ -1,0 +1,12 @@
+* Diode Rectifier - Strong Nonlinearity Test
+* This circuit tests PSS with strong nonlinearity from diode
+V1 1 0 SIN(0 5 1e6)  ; 1MHz, 5V amplitude
+D1 1 2 D1N4001
+R1 2 0 1k
+C1 2 0 10n
+.MODEL D1N4001 D (IS=1e-12 N=1.5 RS=0.1)
+.PSS 1u
+.PRINT PSS V(2) I(D1)
+.END
+
+
